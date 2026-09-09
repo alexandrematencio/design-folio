@@ -216,6 +216,56 @@ plus 750vh de plateau pour la galerie — 1950 en tout, inline dans v2.html.
 Le repos aimante toujours légèrement (`#maybeSnap`, v2 seulement), et tout
 reste une fonction pure du scroll : marche arrière gratuite.
 
+### Le banking : la caméra prend ses virages (v2)
+
+Quand la caméra tourne, elle **s'incline dans le virage**, comme un wagon sur
+sa courbe. Deux virages sur cette étape, et deux seulement : ALIGN, où le
+bezier quitte l'orbite et se pose sur l'axe du conduit, et SWEEP, le demi-tour
+passager de 166° après la sortie. Le conduit est droit — le cap est constant
+sur MORPH_IN et TRAVERSE — donc l'inclinaison y vaut exactement zéro, et le
+couloir de la galerie hérite gratuitement d'un horizon d'aplomb à la porte.
+L'orbite n'en a pas non plus : c'est la page au repos.
+
+C'est une **fonction pure de h**, lue sur la route et jamais intégrée :
+
+```
+bank(h) = 30° × tanh( cap'(h) / 11 ) × win(h, [0, 0.03]) × win(1−h, [0, 0.03])
+```
+
+`cap'` est la différence centrée de l'azimut du regard (ε = 0,002 de l'étape),
+et l'inclinaison est appliquée en tournant `WORLD_UP` autour du regard avant le
+`lookAt`. `tanh` plutôt qu'un clamp : un clamp met un angle dans le roulis au
+moment où le virage sature, et un angle dans le roulis est précisément ce que
+tout ça sert à supprimer.
+
+**Le produit vitesse × cap' du brief a été essayé et jeté, mesures à l'appui.**
+Un passager ressent v²κ, donc la forme évidente est vitesse × taux de lacet.
+Elle ne peut pas marcher ici, et la raison est le tour de force de la page :
+toutes les poses de l'interlude dérivent de `pos = focus − dir·D`, donc la
+vitesse monde de la caméra est surtout D qui bouge — et D bouge le long du
+regard, ce qui est optiquement inerte. Mesuré sur l'étape : **151 246** unités
+monde par unité de h en h = 0,30 (la téléportation ortho → perspective,
+invisible à l'écran) et **8 293** en h = 0,88 (le drain qui recule). Multipliez
+par le lacet : le SWEEP culmine à 385 000 contre 1 403 pour ALIGN, donc tout
+`A_REF` qui donne à ALIGN une inclinaison visible **épingle tout le balayage à
+30°** — un clamp déguisé en tanh — et un roulis de −30° se déclenche en
+h = 0,30, au milieu d'une approche parfaitement droite. La seule composante
+transverse tue l'artefact de 0,30 mais pas le drain : 73:1 quand même.
+
+Or le film est paramétré par le **scroll**, et le scroll est l'abscisse
+curviligne de cette page. Avec l'abscisse curviligne comme paramètre, la
+vitesse vaut 1 par définition et v²κ se réduit à κ — le cap tourné par cran de
+molette, c'est-à-dire la courbure de la route. C'est ce qui est implémenté.
+
+`RATE = 11` est **calibré, pas choisi** : |cap'| mesuré sur toute l'étape vaut
+0,000 partout dans le conduit, culmine à **8,655 rad** dans ALIGN (h = 0,26) et
+**18,11 rad** dans SWEEP (h = 0,786). D'où un roulis mesuré de **−19,7°** au
+pic d'ALIGN et **+27,85°** au pic de SWEEP — les signes sont opposés parce que
+les deux virages le sont, ce qui est de la géométrie et pas un choix. Jauge :
+médiane 3,705 → 3,816, pire pas 20,95 → 20,63 (5,65× → 5,41× la croisière),
+plateau inchangé à 12,95 — la preuve que l'inclinaison ne franchit pas la
+porte.
+
 ### La porte, et le couloir des Selected Works (v2)
 
 Le conduit du logo s'arrête sur un plan de sortie. **Le couloir blanc commence

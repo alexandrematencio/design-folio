@@ -54,7 +54,14 @@ const OUT = path.join(ROOT, args.out ?? "tools/shots");
 
 // Rest, the first flinch out of flatness, the two poses that matter (steps
 // square on at 0.125, the back at 0.625) and two points in between.
-const FRAMES = [0, 0.02, 0.04, 0.07, 0.125, 0.3, 0.5, 0.625];
+//
+// The last three are the JOURNEY'S TWO TURNS, at the progress where each
+// leans hardest (BANK in Scene.js): 0.376 is ALIGN's peak, h = 0.261, and
+// 0.731 / 0.774 straddle SWEEP's, h = 0.787. On v2 the horizon in those three
+// must be visibly off level — left in the first, right in the other two —
+// and the scene must be whole, not sheared. On v1 they are ordinary orbit
+// poses and prove nothing; they cost a screenshot.
+const FRAMES = [0, 0.02, 0.04, 0.07, 0.125, 0.3, 0.5, 0.625, 0.376, 0.731, 0.774];
 
 // --gallery: the plateau, sampled where the answers are. g002 is the first
 // step past the door — the conduit must be behind and the frame all corridor.

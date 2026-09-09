@@ -393,6 +393,83 @@ export const rideRate = (progress) => {
 	return (traverseDepth(h + e) - traverseDepth(h - e)) / (2 * e) / LEG;
 };
 
+/* The journey's small change, shared by the ride and by the banking. */
+
+/** A phase window, eased with zero slope at both edges. Not clamped in v. */
+const win = (v, [a, b]) => smoothstep(clamp((v - a) / (b - a)));
+/** Compass angle of a direction. Increasing it turns the camera RIGHT. */
+const azimuth = (v) => Math.atan2(-v.x, v.z);
+const elevation = (v) => Math.asin(clamp(v.y / v.length(), -1, 1));
+/** The inverse: a unit direction from azimuth and elevation. */
+const heading = (az, el) =>
+	new THREE.Vector3(
+		-Math.sin(az) * Math.cos(el),
+		Math.sin(el),
+		Math.cos(az) * Math.cos(el),
+	);
+const bezier = (p0, p1, p2, p3, u) => {
+	const v = 1 - u;
+	return new THREE.Vector3()
+		.addScaledVector(p0, v * v * v)
+		.addScaledVector(p1, 3 * v * v * u)
+		.addScaledVector(p2, 3 * v * u * u)
+		.addScaledVector(p3, u * u * u);
+};
+
+/**
+ * THE BANKING — the camera leans into its turns, the way a rail car leans on
+ * its curve. It is not decoration: an eye that yaws hard while its up stays
+ * bolted to the world reads as a machine panning. Lean it and the same move
+ * reads as a body being carried through the turn.
+ *
+ * Two turns on this leg, and only two. ALIGN, where the bezier leaves the
+ * orbit and swings onto the bore's axis; and SWEEP, the 166-degree passenger
+ * turn after the exit. The bore itself is straight — heading is constant
+ * through MORPH_IN and TRAVERSE — so the lean is exactly zero everywhere
+ * inside the conduit, which is also why the corridor inherits a level horizon
+ * at the door for free. The orbit has none either: it is the page at rest and
+ * the rest pose must stay exact.
+ *
+ * THE LATERAL RATE IS THE HEADING RATE, and getting there cost a measurement.
+ * A passenger feels v²κ, so the obvious form is speed × yaw rate — and it was
+ * tried first, in world units. It cannot work HERE, and the reason is this
+ * page's own trick: the interlude derives every position from pos = focus −
+ * dir·D, so the camera's world speed is mostly the dolly zoom's D moving, and
+ * D moving along the gaze is optically inert. Measured on the leg: 151 246
+ * world units per unit of h at h = 0.30 (the ortho-to-perspective teleport,
+ * invisible on screen) and 8 293 at h = 0.88 (the drain receding). Multiply
+ * either by the yaw and the numbers stop describing the picture — the SWEEP
+ * peaks at 385 000 against ALIGN's 1 403, so any A_REF that gives ALIGN a
+ * visible lean pins the WHOLE sweep at MAX, a hard clamp under a tanh's
+ * clothes, and a full −30° roll fires at h = 0.30, in the middle of a dead
+ * straight approach. Using only the transverse component kills the h = 0.30
+ * artefact but not the drain: still 73:1.
+ *
+ * So the ride is parameterised by SCROLL, and scroll is the arc length this
+ * page measures everything in. With arc length as the parameter the speed is
+ * 1 by definition and v²κ collapses to κ — the heading turned per notch of
+ * wheel, which is exactly the curvature of the road the visitor is on.
+ *
+ * RATE IS THEN CALIBRATED, NOT CHOSEN. |d(heading)/dh| measured over the leg:
+ * 0.000 everywhere inside the conduit (MORPH_IN and TRAVERSE hold a constant
+ * heading — which is why the corridor inherits a level horizon at the door),
+ * peak 8.655 rad in ALIGN at h = 0.26, peak 18.11 rad in SWEEP at h = 0.786.
+ * RATE = 11 puts the sweep at 27.8 degrees and the align at 19.7 — the brief's
+ * window on both counts. The signs come out opposite (ALIGN turns left, SWEEP
+ * turns right), so the two leans mirror each other, which is the geometry
+ * talking and not a choice.
+ *
+ * tanh rather than a clamp, deliberately: a clamp puts a corner in the roll at
+ * the moment the turn saturates, and a corner in the roll is precisely the
+ * thing this exists to remove.
+ */
+const BANK = {
+	MAX: (30 * Math.PI) / 180,
+	RATE: 11, // rad of heading per unit of h worth tanh(1) = 76 % of MAX
+	EPS: 0.002, // of the leg: the central difference the rate is read on
+	EDGE: 0.03, // of the leg: zero lean at both of the leg's own seams
+};
+
 /* ------------------------------------------------------------------- scene */
 
 export default class Scene {
@@ -1060,89 +1137,36 @@ export default class Scene {
 	 */
 	#applyJourney(progress) {
 		if (!this.glyph || this.dive) return;
-		const span = JOURNEY.TO - JOURNEY.FROM;
-		const h = (progress - JOURNEY.FROM) / span;
+		const h = journeyH(progress);
 		if (h <= 0 || h >= 1) return;
 
-		const { s, ride, axisDir, mouth } = this.boreFrame();
-		const win = (v, [a, b]) => smoothstep(clamp((v - a) / (b - a)));
-		const bez = (p0, p1, p2, p3, u) => {
-			const v = 1 - u;
-			return new THREE.Vector3()
-				.addScaledVector(p0, v * v * v)
-				.addScaledVector(p1, 3 * v * v * u)
-				.addScaledVector(p2, 3 * v * u * u)
-				.addScaledVector(p3, u * u * u);
-		};
+		// The two things #ridePose must not recompute per sample: the bore's
+		// world frame, and the orbit anchors the ALIGN bezier leaves from
+		// (they are read at fixed progress values, so they do not depend on h
+		// at all). Three evaluations a frame, one of each.
+		const bore = this.boreFrame();
+		const align = this.#alignAnchors(bore);
 
-		const axisEnd = ride(TUNNEL.halfLength + JOURNEY.EXIT_OVER);
-		const ahead = (at) =>
-			at.clone().addScaledVector(axisDir, JOURNEY.LOOK * s);
+		const { pos, dir, ortho, k } = this.#ridePose(h, bore, align);
 
-		const kMin = Math.tan((JOURNEY.FOV_FLAT * Math.PI) / 360);
-		const kMax = Math.tan((JOURNEY.FOV * Math.PI) / 360);
-		const H_TRAVEL = VIEW_HEIGHT / ORBIT.ZOOM_TRAVEL;
-		const wIn = win(h, JOURNEY.MORPH_IN);
-		const wOut = win(h, JOURNEY.MORPH_OUT);
-		// tan(fov/2): the one number perspective-ness lives in. Animating it
-		// (rather than the fov) keeps the parallax rate steady.
-		const k = wOut > 0 ? lerp(kMax, kMin, wOut) : lerp(kMin, kMax, wIn);
+		// The lean, and the up it produces. Zero everywhere the road is
+		// straight — which includes the whole traverse, and therefore the
+		// door: the gallery copies this pose and inherits a level horizon.
+		const bank = this.#bank(h, bore, align);
+		const up = WORLD_UP.clone().applyAxisAngle(
+			dir.clone().normalize(),
+			bank,
+		);
 
-		/* ---- the ortho bookends ---- */
-		if (h < JOURNEY.MORPH_IN[0]) {
-			// ALIGN: leave the orbit at its own speed (bezier matched by
-			// central difference), land parked ON the ride line with zero
-			// velocity — the first breath. The gaze walks from the mark to a
-			// point riding the camera down the axis (GAZE_IN), so the swing
-			// dies exactly as its smoothstep flattens.
-			const d = 0.002;
-			this.#orbitCamera(JOURNEY.FROM, this.scratch);
-			const at = this.scratch.position.clone();
-			this.#orbitCamera(JOURNEY.FROM + d, this.scratch);
-			const aheadAt = this.scratch.position.clone();
-			this.#orbitCamera(JOURNEY.FROM - d, this.scratch);
-			const vel = aheadAt.sub(this.scratch.position).divideScalar(2 * d);
-
-			const park = ride(-JOURNEY.PARK);
-			const du = JOURNEY.ALIGN[1] * span;
-			const pos = bez(
-				at,
-				at.clone().addScaledVector(vel, du / 3),
-				park,
-				park,
-				h / JOURNEY.ALIGN[1],
-			);
-			// THE MARK STAYS PINNED, exactly as the orbit pins it: the gaze
-			// is "toward the mark" plus a small eased offset that lands on
-			// the axis at the park. Aiming anywhere else while the bezier
-			// travels lets 18 % of the frame's ink slide — both earlier
-			// versions (a target lerp, then a free direction blend) measured
-			// ~4x cruise from that alone, with every camera CHANNEL at
-			// cruise speed. The offset is only the few degrees between
-			// "mark seen from the park" and the axis, so its own rate is
-			// noise; the swing the visitor sees is the bezier's, which the
-			// pinning turns into an orbit-like sweep AROUND the mark.
-			const az = (v) => Math.atan2(-v.x, v.z);
-			const elv = (v) => Math.asin(clamp(v.y / v.length(), -1, 1));
-			const toMark = this.pivot.clone().sub(pos).normalize();
-			const fromPark = this.pivot.clone().sub(park).normalize();
-			let offAz = az(axisDir) - az(fromPark);
-			if (offAz > Math.PI) offAz -= Math.PI * 2;
-			if (offAz < -Math.PI) offAz += Math.PI * 2;
-			const offEl = 0 - elv(fromPark);
-			const wG = win(h, JOURNEY.GAZE_IN);
-			const ya = az(toMark) + offAz * wG;
-			const el = elv(toMark) + offEl * wG;
-			const dirA = new THREE.Vector3(
-				-Math.sin(ya) * Math.cos(el),
-				Math.sin(el),
-				Math.cos(ya) * Math.cos(el),
-			);
+		/* ---- the ortho bookend ---- */
+		if (ortho) {
 			const quat = new THREE.Quaternion().setFromRotationMatrix(
-				new THREE.Matrix4().lookAt(pos, pos.clone().add(dirA), WORLD_UP),
+				new THREE.Matrix4().lookAt(pos, pos.clone().add(dir), up),
 			);
 			if (h < JOURNEY.STITCH) {
 				// Float-level seam onto the live orbit gaze at the leg's edge.
+				// The bank is already gated to zero under BANK.EDGE, so this
+				// slerp still has a level frame on both of its ends.
 				quat.slerpQuaternions(
 					this.camera.quaternion,
 					quat.clone(),
@@ -1154,6 +1178,7 @@ export default class Scene {
 			this.camera.updateMatrixWorld(true);
 			return;
 		}
+
 		if (h >= JOURNEY.LAND) {
 			// Nothing to land. The sweep chases the LIVE orbit gaze (not the
 			// frozen pose at TO), so when the dolly zoom finishes draining,
@@ -1163,71 +1188,6 @@ export default class Scene {
 			// aimed at TO's fixed heading instead and the switch panned the
 			// frame 13 degrees in one step (8.7x cruise on the gauge).
 			return;
-		}
-
-		/* ---- the perspective interlude ---- */
-		let pos;
-		let dir;
-		if (h < JOURNEY.TRAVERSE[0]) {
-			// MORPH_IN: focus pinned on the mouth, D = H/(2k) rides the
-			// camera in as the frame tightens and the fov opens. The switch
-			// from ALIGN is free: at FOV_FLAT this pose draws the ortho
-			// frame ALIGN ended on (position along the gaze shows nothing in
-			// ortho, so the world-space teleport is not on screen).
-			const Hn = lerp(H_TRAVEL, JOURNEY.FRAME_MOUTH * s, wIn);
-			pos = mouth.clone().addScaledVector(axisDir, -Hn / (2 * k));
-			dir = axisDir.clone(); // GAZE_IN ended with ALIGN: heading held
-		} else if (h < JOURNEY.MORPH_OUT[0]) {
-			// The derived branch below MUST own the whole life of wOut: it
-			// reduces to the traverse's end exactly at wOut = wS = 0, and
-			// letting the traverse linger while wOut ran popped the position
-			// three units at the seam (5.5x, one step).
-			// TRAVERSE: constant heading down the axis, the exit growing
-			// dead ahead — perspective does the talking. Eased at both ends:
-			// a breath at the mouth going in, one past the exit coming out.
-			// The depth is traverseDepth(h) and nothing else: the gallery
-			// solves that same function for the door, so the two agree by
-			// construction rather than by two numbers kept in step by hand.
-			pos = ride(traverseDepth(h));
-			dir = axisDir.clone();
-		} else {
-			// SWEEP + MORPH_OUT: the passenger turn. The gaze direction
-			// sweeps (the long way, so the room hands over to the stair
-			// continuously) from the road ahead onto the orbit's own gaze at
-			// TO; the focus walks from the look-ahead point onto the mark;
-			// and the position is DERIVED — focus − dir·D — so the camera
-			// arcs around the subject because that is what looking does.
-			// As MORPH_OUT drains k, D grows and the arc becomes the
-			// receding spiral of the dolly zoom.
-			const wS = win(h, JOURNEY.SWEEP); // uniform: see the SWEEP note
-			// The end heading is the LIVE orbit gaze — animate() wrote it on
-			// the ortho camera just above — so the sweep delivers the very
-			// frame the orbit will keep, and LAND has nothing to absorb.
-			const fwdEnd = new THREE.Vector3(0, 0, -1).applyQuaternion(
-				this.camera.quaternion,
-			);
-			const az = (v) => Math.atan2(-v.x, v.z);
-			const elv = (v) => Math.asin(clamp(v.y / v.length(), -1, 1));
-			// The long way round, through -X: the stair re-enters from the
-			// right, the side the ortho cut had already validated by eye.
-			let dAz = az(fwdEnd) - az(axisDir);
-			if (dAz < 0) dAz += Math.PI * 2;
-			const ya = az(axisDir) + dAz * wS;
-			const el = lerp(0, elv(fwdEnd), wS);
-			dir = new THREE.Vector3(
-				-Math.sin(ya) * Math.cos(el),
-				Math.sin(el),
-				Math.cos(ya) * Math.cos(el),
-			);
-			const focus = ahead(axisEnd).lerp(this.pivot, wS);
-			const Hn = lerp(2 * kMax * JOURNEY.LOOK * s, H_TRAVEL, wOut);
-			pos = focus.addScaledVector(dir, -Hn / (2 * k));
-			// The crane (see LIFT / PUSH): up and forward into clear air,
-			// gone by the time the drain ends — the path recedes high over
-			// the solid instead of backing down the bore's own line.
-			const crane = Math.sin(Math.PI * wOut) * s;
-			pos.addScaledVector(WORLD_UP, JOURNEY.LIFT * crane);
-			pos.addScaledVector(axisDir, JOURNEY.PUSH * crane);
 		}
 
 		const cam = this.perspCamera;
@@ -1242,12 +1202,205 @@ export default class Scene {
 		cam.far = reach + 150;
 		cam.updateProjectionMatrix();
 		cam.position.copy(pos);
-		cam.up.copy(WORLD_UP);
+		cam.up.copy(up);
 		cam.lookAt(pos.clone().add(dir));
 		cam.updateMatrixWorld(true);
 		this.renderCamera = cam;
 	}
 
+	/**
+	 * Where ALIGN's bezier leaves from, and how fast. Read at FIXED progress
+	 * values — the leg's own edge and a central difference around it — so it
+	 * is a constant of the frame, not a function of h. Hoisted out of the
+	 * ride so that sampling three h's does not cost nine orbit poses.
+	 */
+	#alignAnchors(bore) {
+		const d = 0.002;
+		this.#orbitCamera(JOURNEY.FROM, this.scratch);
+		const at = this.scratch.position.clone();
+		this.#orbitCamera(JOURNEY.FROM + d, this.scratch);
+		const aheadAt = this.scratch.position.clone();
+		this.#orbitCamera(JOURNEY.FROM - d, this.scratch);
+		const vel = aheadAt.sub(this.scratch.position).divideScalar(2 * d);
+
+		const park = bore.ride(-JOURNEY.PARK);
+		const du = JOURNEY.ALIGN[1] * (JOURNEY.TO - JOURNEY.FROM);
+		// THE MARK STAYS PINNED, exactly as the orbit pins it: the gaze is
+		// "toward the mark" plus a small eased offset that lands on the axis
+		// at the park. Aiming anywhere else while the bezier travels lets
+		// 18 % of the frame's ink slide — both earlier versions (a target
+		// lerp, then a free direction blend) measured ~4x cruise from that
+		// alone, with every camera CHANNEL at cruise speed. The offset is
+		// only the few degrees between "mark seen from the park" and the
+		// axis, so its own rate is noise; the swing the visitor sees is the
+		// bezier's, which the pinning turns into an orbit-like sweep AROUND
+		// the mark.
+		const fromPark = this.pivot.clone().sub(park).normalize();
+		let offAz = azimuth(bore.axisDir) - azimuth(fromPark);
+		if (offAz > Math.PI) offAz -= Math.PI * 2;
+		if (offAz < -Math.PI) offAz += Math.PI * 2;
+		return {
+			at,
+			handle: at.clone().addScaledVector(vel, du / 3),
+			park,
+			offAz,
+			offEl: 0 - elevation(fromPark),
+		};
+	}
+
+	/**
+	 * THE RIDE, AS A PURE FUNCTION OF h — where the eye stands and which way
+	 * it looks, with nothing written to any camera. Split out of #applyJourney
+	 * because the banking needs this same pose at h ± ε to know how hard the
+	 * road is turning there, and a second copy of these four branches would
+	 * drift the day one of them was touched.
+	 *
+	 * The ortho bookend hands back its PRE-STITCH direction: the slerp onto
+	 * the live orbit gaze is a quaternion-level seam, it belongs to the frame
+	 * being drawn and not to the road, and feeding it into a difference would
+	 * read the seam as a turn.
+	 *
+	 * Defined outside [0, 1] on purpose — the difference at the very edges
+	 * asks for it, and every branch extrapolates smoothly.
+	 */
+	#ridePose(h, bore, align) {
+		const { s, ride, axisDir, mouth } = bore;
+
+		if (h < JOURNEY.MORPH_IN[0]) {
+			// ALIGN: leave the orbit at its own speed (bezier matched by
+			// central difference), land parked ON the ride line with zero
+			// velocity — the first breath. The gaze walks from the mark to a
+			// point riding the camera down the axis (GAZE_IN), so the swing
+			// dies exactly as its smoothstep flattens.
+			const pos = bezier(
+				align.at,
+				align.handle,
+				align.park,
+				align.park,
+				h / JOURNEY.ALIGN[1],
+			);
+			const toMark = this.pivot.clone().sub(pos).normalize();
+			const wG = win(h, JOURNEY.GAZE_IN);
+			const ya = azimuth(toMark) + align.offAz * wG;
+			const el = elevation(toMark) + align.offEl * wG;
+			return { pos, dir: heading(ya, el), ortho: true };
+		}
+
+		/* ---- the perspective interlude ---- */
+		const kMin = Math.tan((JOURNEY.FOV_FLAT * Math.PI) / 360);
+		const kMax = Math.tan((JOURNEY.FOV * Math.PI) / 360);
+		const H_TRAVEL = VIEW_HEIGHT / ORBIT.ZOOM_TRAVEL;
+		const wIn = win(h, JOURNEY.MORPH_IN);
+		const wOut = win(h, JOURNEY.MORPH_OUT);
+		// tan(fov/2): the one number perspective-ness lives in. Animating it
+		// (rather than the fov) keeps the parallax rate steady.
+		const k = wOut > 0 ? lerp(kMax, kMin, wOut) : lerp(kMin, kMax, wIn);
+
+		if (h < JOURNEY.TRAVERSE[0]) {
+			// MORPH_IN: focus pinned on the mouth, D = H/(2k) rides the
+			// camera in as the frame tightens and the fov opens. The switch
+			// from ALIGN is free: at FOV_FLAT this pose draws the ortho
+			// frame ALIGN ended on (position along the gaze shows nothing in
+			// ortho, so the world-space teleport is not on screen).
+			const Hn = lerp(H_TRAVEL, JOURNEY.FRAME_MOUTH * s, wIn);
+			return {
+				pos: mouth.clone().addScaledVector(axisDir, -Hn / (2 * k)),
+				dir: axisDir.clone(), // GAZE_IN ended with ALIGN: heading held
+				k,
+			};
+		}
+
+		if (h < JOURNEY.MORPH_OUT[0]) {
+			// The derived branch below MUST own the whole life of wOut: it
+			// reduces to the traverse's end exactly at wOut = wS = 0, and
+			// letting the traverse linger while wOut ran popped the position
+			// three units at the seam (5.5x, one step).
+			// TRAVERSE: constant heading down the axis, the exit growing
+			// dead ahead — perspective does the talking. Eased at both ends:
+			// a breath at the mouth going in, one past the exit coming out.
+			// The depth is traverseDepth(h) and nothing else: the gallery
+			// solves that same function for the door, so the two agree by
+			// construction rather than by two numbers kept in step by hand.
+			return { pos: ride(traverseDepth(h)), dir: axisDir.clone(), k };
+		}
+
+		// SWEEP + MORPH_OUT: the passenger turn. The gaze direction sweeps
+		// (the long way, so the room hands over to the stair continuously)
+		// from the road ahead onto the orbit's own gaze at TO; the focus
+		// walks from the look-ahead point onto the mark; and the position is
+		// DERIVED — focus − dir·D — so the camera arcs around the subject
+		// because that is what looking does. As MORPH_OUT drains k, D grows
+		// and the arc becomes the receding spiral of the dolly zoom.
+		const wS = win(h, JOURNEY.SWEEP); // uniform: see the SWEEP note
+		// The end heading is the orbit gaze AT THIS h — animate() writes it
+		// on the ortho camera for the frame being drawn, and #orbitCamera
+		// gives the same answer for the neighbours the difference asks for —
+		// so the sweep delivers the very frame the orbit will keep, and LAND
+		// has nothing to absorb.
+		this.#orbitCamera(journeyProgress(h), this.scratch);
+		const fwdEnd = new THREE.Vector3(0, 0, -1).applyQuaternion(
+			this.scratch.quaternion,
+		);
+		// The long way round, through -X: the stair re-enters from the
+		// right, the side the ortho cut had already validated by eye.
+		let dAz = azimuth(fwdEnd) - azimuth(axisDir);
+		if (dAz < 0) dAz += Math.PI * 2;
+		const dir = heading(
+			azimuth(axisDir) + dAz * wS,
+			lerp(0, elevation(fwdEnd), wS),
+		);
+		const axisEnd = ride(TUNNEL.halfLength + JOURNEY.EXIT_OVER);
+		const focus = axisEnd
+			.clone()
+			.addScaledVector(axisDir, JOURNEY.LOOK * s)
+			.lerp(this.pivot, wS);
+		const Hn = lerp(2 * kMax * JOURNEY.LOOK * s, H_TRAVEL, wOut);
+		const pos = focus.addScaledVector(dir, -Hn / (2 * k));
+		// The crane (see LIFT / PUSH): up and forward into clear air, gone by
+		// the time the drain ends — the path recedes high over the solid
+		// instead of backing down the bore's own line.
+		const crane = Math.sin(Math.PI * wOut) * s;
+		pos.addScaledVector(WORLD_UP, JOURNEY.LIFT * crane);
+		pos.addScaledVector(axisDir, JOURNEY.PUSH * crane);
+		return { pos, dir, k };
+	}
+
+	/**
+	 * THE LEAN, in radians about the camera's own gaze — a pure function of h
+	 * like everything else on this leg, read off the road rather than tracked.
+	 *
+	 * SIGN, and it was checked on a frame rather than in anyone's head:
+	 * azimuth(v) = atan2(−x, z), and d(dir)/d(azimuth) is exactly the camera's
+	 * RIGHT vector (Matrix4.lookAt builds x = up × (eye − target) = forward ×
+	 * up), so a POSITIVE yaw rate is a right-hand turn. Rotating WORLD_UP by
+	 * +bank about the gaze carries the up toward that right — a motorcycle
+	 * leaning into a right-hander — and the world's vertical therefore falls
+	 * to the left of frame.
+	 *
+	 * THE TWO WINDOWS ARE NOT BELT AND BRACES. At h = 0 the ride leaves the
+	 * orbit at the orbit's own speed AND its own heading rate, so lateral is
+	 * emphatically not zero there: without the gate the roll would step on at
+	 * the leg's first frame, against an orbit that has none. At the far end wS
+	 * flattens on its own and the lean dies with it, but the window costs
+	 * nothing and makes LAND unconditional.
+	 */
+	#bank(h, bore, align) {
+		const e = BANK.EPS;
+		const back = this.#ridePose(h - e, bore, align);
+		const fwd = this.#ridePose(h + e, bore, align);
+		let dYaw = azimuth(fwd.dir) - azimuth(back.dir);
+		if (dYaw > Math.PI) dYaw -= Math.PI * 2;
+		if (dYaw < -Math.PI) dYaw += Math.PI * 2;
+		// The road's curvature, per notch of wheel. See the BANK note for why
+		// the world speed that belongs in v²κ is not in here.
+		const rate = dYaw / (2 * e);
+		return (
+			BANK.MAX *
+			Math.tanh(rate / BANK.RATE) *
+			win(h, [0, BANK.EDGE]) *
+			win(1 - h, [0, BANK.EDGE])
+		);
+	}
 	/* ------------------------------------------------------- page visibility */
 
 	/**
