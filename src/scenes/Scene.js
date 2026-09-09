@@ -8,7 +8,15 @@ import { patchGlyphMaterial } from "../utils/GlyphMaterial";
 import { attachLightBake } from "../utils/glyphLightBake";
 import { loadGltf, firstMesh } from "../utils/ImportGltf";
 import { createStudioEnvironment } from "../utils/studioEnvironment";
-import { ORBIT, orbitPose, facingSteps, clamp, lerp, smoothstep } from "../utils/utils";
+import {
+	ORBIT,
+	orbitPose,
+	facingSteps,
+	clamp,
+	lerp,
+	smoothstep,
+	smootherstep,
+} from "../utils/utils";
 
 /* --------------------------------------------------------------- constants */
 
@@ -344,6 +352,13 @@ export const JOURNEY = {
 	FRAME_MOUTH: 2.2, // frame height (x s) at the mouth, fully perspective
 	LOOK: 1.8, // gaze lead along the axis (x s); also the spiral's start radius
 	EXIT_OVER: 0.3, // how far past the exit plane the traverse rolls (x s)
+	// How far past the exit plane the door counts as CROSSED, and the plateau
+	// opens. It lives here, next to the ride it now paces, and no longer in
+	// Gallery.js: the traverse holds its cruise until exactly this depth and
+	// only brakes afterwards, so the corridor's own constant is the one that
+	// decides where the ride stops being flat. Small on purpose — at 0.1 the
+	// conduit is behind the eye and the frame is all corridor.
+	DOOR_OVER: 0.1,
 	PARK: 6, // where ALIGN parks on the axis (local z units before the mouth)
 };
 
@@ -358,25 +373,66 @@ export const journeyProgress = (h) => JOURNEY.FROM + h * LEG;
  * during TRAVERSE, in GLYPH-LOCAL units measured from the bore's CENTRE (so
  * the exit plane is +TUNNEL.halfLength and the mouth is -halfLength).
  *
- * #applyJourney lerps a world point between exactly these two ends, and
- * ride(z) is an affine map of z, so lerping the depth and lerping the point
- * are the same thing. It is spelled out here because the gallery needs to ask
+ * #ridePose reads a world point off it through ride(z), which is an affine map
+ * of z, so the pacing written here IS the pacing on screen. It is spelled out
+ * here because the gallery needs to ask
  * two questions that used to have no owner — WHERE is the door crossed, and
  * HOW FAST is the camera going there — and a second copy of this arithmetic
  * would drift the day the easing is touched, which is exactly the seam where
  * the drift would show.
+ *
+ * NO BRAKING IN THE DOORWAY, and that is the shape of the thing. One S-curve
+ * over the whole traverse is a car that lifts off the throttle before the gate:
+ * the door used to be crossed at 43 % of the peak (measured, 60 px steps of
+ * real wheel: 0.319 world units per step mid-bore, 0.136 at the door), and then
+ * the corridor picked the speed back up — an acceleration that changes SIGN in
+ * the doorway. So the pacing is three pieces instead:
+ *
+ *   MORPH_IN   the breath at the gate: the frame at the mouth closes from a
+ *              standstill at the park and ARRIVES at cruise (see the dolly's
+ *              exit slope in #ridePose)
+ *   here       flat out from the mouth to the door, and one bore width past it
+ *   here       the brake, and only then: a quintic ramp DOWN in speed onto the
+ *              stop at axisEnd, where the sweep takes over from rest
+ *
+ * The brake is behind the visitor by then — the corridor owns the picture from
+ * the door on — and the ride resumes on this same curve on the far side of the
+ * plateau, facing the white cyclorama, where nothing on screen is moving.
+ *
+ * CRUISE_UNTIL is solved, not chosen: cruise for c, then a ramp that covers
+ * half of what a cruise would over the rest, so c·V = before and (1−c)/2·V =
+ * after, where before and after are the distances either side of the door.
+ * Hence c = before / (before + 2·after) — and the door lands exactly on the
+ * knee, which is what makes the speed at the door BE the cruise.
  */
+const K_MAX = Math.tan((JOURNEY.FOV * Math.PI) / 360);
+const RIDE_FROM = -TUNNEL.halfLength - JOURNEY.FRAME_MOUTH / (2 * K_MAX);
+const RIDE_TO = TUNNEL.halfLength + JOURNEY.EXIT_OVER;
+const RIDE_DOOR = TUNNEL.halfLength + JOURNEY.DOOR_OVER;
+const CRUISE_UNTIL =
+	(RIDE_DOOR - RIDE_FROM) / (RIDE_DOOR - RIDE_FROM + 2 * (RIDE_TO - RIDE_DOOR));
+/** Local units per unit of the traverse's own u. Solved so the ends land. */
+const RIDE_CRUISE = (2 * (RIDE_TO - RIDE_FROM)) / (1 + CRUISE_UNTIL);
+/** The same, per unit of h: what the corridor has to match at the door. */
+const RIDE_RATE = RIDE_CRUISE / (JOURNEY.TRAVERSE[1] - JOURNEY.TRAVERSE[0]);
+
 export const traverseDepth = (h) => {
-	const kMax = Math.tan((JOURNEY.FOV * Math.PI) / 360);
-	const from = -TUNNEL.halfLength - JOURNEY.FRAME_MOUTH / (2 * kMax);
-	const to = TUNNEL.halfLength + JOURNEY.EXIT_OVER;
 	const [a, b] = JOURNEY.TRAVERSE;
-	return lerp(from, to, smoothstep(clamp((h - a) / (b - a))));
+	const u = clamp((h - a) / (b - a));
+	if (u <= CRUISE_UNTIL) return RIDE_FROM + RIDE_CRUISE * u;
+	// The brake. Its speed is V·(1 − smootherstep), so the deceleration is zero
+	// at both ends of the ramp: the knee at the door has no corner in it, and
+	// the stop at axisEnd is reached without one either. Closed form of
+	// ∫₀ʸ (1 − smootherstep) = y − y⁶ + 3y⁵ − 2.5y⁴.
+	const w = 1 - CRUISE_UNTIL;
+	const y = (u - CRUISE_UNTIL) / w;
+	const rolled = y - y ** 6 + 3 * y ** 5 - 2.5 * y ** 4;
+	return RIDE_FROM + RIDE_CRUISE * (CRUISE_UNTIL + w * rolled);
 };
 
 /**
  * The progress at which the ride stands `over` bore widths PAST the exit
- * plane. Bisection rather than an inverted smoothstep: the depth is monotone
+ * plane. Bisection rather than an inverted ease: the depth is monotone
  * across TRAVERSE, forty halvings land on the float, and the day the easing
  * changes shape this keeps answering instead of quietly lying.
  */
@@ -393,8 +449,9 @@ export const progressPastExit = (over) => {
 
 /**
  * How fast the ride runs there, in bore widths per unit of PROGRESS. Central
- * difference, because TRAVERSE eases out on its end and the number that
- * matters at the door is the one the easing has left, not the cruise.
+ * difference rather than RIDE_RATE read off the constant: at the door the two
+ * are now the same number by construction, and this keeps saying so — or stops
+ * saying so out loud — the day the pacing is reshaped again.
  */
 export const rideRate = (progress) => {
 	const e = 1e-4;
@@ -404,8 +461,32 @@ export const rideRate = (progress) => {
 
 /* The journey's small change, shared by the ride and by the banking. */
 
-/** A phase window, eased with zero slope at both edges. Not clamped in v. */
-const win = (v, [a, b]) => smoothstep(clamp((v - a) / (b - a)));
+/**
+ * A phase window, eased with zero slope AND zero acceleration at both edges.
+ * Not clamped in v.
+ *
+ * Quintic rather than the cubic it was: every window here is C1 at its seam, so
+ * nothing on this leg ever jumps in speed — but the acceleration did, at every
+ * one of them, and that is what a passenger reads as a jolt in a ride that the
+ * flow gauge signs off on. Cost, paid knowingly: a quintic's steepest slope is
+ * 1.875 against the cubic's 1.5, so every window's peak speed goes up a quarter
+ * and the flow gauge has to be re-read after any change to one of them.
+ */
+const win = (v, [a, b]) => smootherstep(clamp((v - a) / (b - a)));
+
+/**
+ * A window that ARRIVES with a chosen slope instead of flat — the one place a
+ * phase must hand over moving, because the next one is already at cruise.
+ *
+ * w = a u⁵ + b u⁴ + c u³ is zero in value, slope AND curvature at u = 0 by
+ * construction; asking for w(1) = 1, w'(1) = m and w''(1) = 0 gives
+ * a = 6 − 3m, b = 7m − 15, c = 10 − 4m. At m = 0 it is exactly smootherstep.
+ * Monotone up to m ≈ 2.4, past which the tail steals from the head and the
+ * curve backs up; the ride asks for 1.36 on a wide viewport, 0.57 on a narrow
+ * one, and its own peak slope (~1.49) is below smootherstep's 1.875.
+ */
+const rampTo = (u, m) =>
+	u * u * u * (((6 - 3 * m) * u - (15 - 7 * m)) * u + (10 - 4 * m));
 /** Compass angle of a direction. Increasing it turns the camera RIGHT. */
 const azimuth = (v) => Math.atan2(-v.x, v.z);
 const elevation = (v) => Math.asin(clamp(v.y / v.length(), -1, 1));
@@ -476,7 +557,15 @@ const BANK = {
 	MAX: (30 * Math.PI) / 180,
 	RATE: 11, // rad of heading per unit of h worth tanh(1) = 76 % of MAX
 	EPS: 0.002, // of the leg: the central difference the rate is read on
-	EDGE: 0.03, // of the leg: zero lean at both of the leg's own seams
+	// Of the leg: zero lean at both ends of the leg's PERSPECTIVE stretch —
+	// which starts at h = 0 and ends at LAND, not at 1. The far gate used to
+	// close on h = 1, where it never fired: past LAND the ortho orbit draws the
+	// frame, and it has no lean at all. Measured on the render camera, the last
+	// perspective frame stood at 8.2 degrees of roll (h = 0.955) and the next
+	// one was dead level — one step of 17.1 on the flow gauge against 1.1
+	// either side, 4.2x cruise, the biggest single jolt on the leg and one that
+	// no curve could have smoothed, because it was a gate that never shut.
+	EDGE: 0.03,
 };
 
 /* ------------------------------------------------------------------- scene */
@@ -1179,7 +1268,7 @@ export default class Scene {
 				quat.slerpQuaternions(
 					this.camera.quaternion,
 					quat.clone(),
-					smoothstep(clamp(h / JOURNEY.STITCH)),
+					smootherstep(clamp(h / JOURNEY.STITCH)),
 				);
 			}
 			this.camera.position.copy(pos);
@@ -1280,7 +1369,7 @@ export default class Scene {
 			// central difference), land parked ON the ride line with zero
 			// velocity — the first breath. The gaze walks from the mark to a
 			// point riding the camera down the axis (GAZE_IN), so the swing
-			// dies exactly as its smoothstep flattens.
+			// dies exactly as its window flattens.
 			const pos = bezier(
 				align.at,
 				align.handle,
@@ -1297,13 +1386,12 @@ export default class Scene {
 
 		/* ---- the perspective interlude ---- */
 		const kMin = Math.tan((JOURNEY.FOV_FLAT * Math.PI) / 360);
-		const kMax = Math.tan((JOURNEY.FOV * Math.PI) / 360);
 		const H_TRAVEL = VIEW_HEIGHT / ORBIT.ZOOM_TRAVEL;
 		const wIn = win(h, JOURNEY.MORPH_IN);
 		const wOut = win(h, JOURNEY.MORPH_OUT);
 		// tan(fov/2): the one number perspective-ness lives in. Animating it
 		// (rather than the fov) keeps the parallax rate steady.
-		const k = wOut > 0 ? lerp(kMax, kMin, wOut) : lerp(kMin, kMax, wIn);
+		const k = wOut > 0 ? lerp(K_MAX, kMin, wOut) : lerp(kMin, K_MAX, wIn);
 
 		if (h < JOURNEY.TRAVERSE[0]) {
 			// MORPH_IN: focus pinned on the mouth, D = H/(2k) rides the
@@ -1311,7 +1399,28 @@ export default class Scene {
 			// from ALIGN is free: at FOV_FLAT this pose draws the ortho
 			// frame ALIGN ended on (position along the gaze shows nothing in
 			// ortho, so the world-space teleport is not on screen).
-			const Hn = lerp(H_TRAVEL, JOURNEY.FRAME_MOUTH * s, wIn);
+			//
+			// TWO SCHEDULES, NOT ONE, and that is the breath at the gate. The
+			// fov opens on the plain window (flat at both ends: it is constant
+			// from the mouth on, so anything else would put a corner in the
+			// perspective). The FRAME rides its own curve, which arrives with
+			// the slope that makes the frame at the mouth shrink at exactly the
+			// speed the traverse then carries on with — d(frame)/dh = 2·kMax·s·
+			// RIDE_RATE, divided by the frame's own span, over the window. The
+			// two used to share the plain window, so both ended flat and the
+			// drive came to a STOP at the mouth: measured at 0.016 world units
+			// per 60 px step against 0.319 mid-bore — a 5 % crawl at the gate,
+			// then a surge. Now the mouth is entered at cruise and the only
+			// thing the window still eases is the pull away from the park.
+			const wD = rampTo(
+				clamp(
+					(h - JOURNEY.MORPH_IN[0]) /
+						(JOURNEY.MORPH_IN[1] - JOURNEY.MORPH_IN[0]),
+				),
+				((2 * K_MAX * s * RIDE_RATE) / (H_TRAVEL - JOURNEY.FRAME_MOUTH * s)) *
+					(JOURNEY.MORPH_IN[1] - JOURNEY.MORPH_IN[0]),
+			);
+			const Hn = lerp(H_TRAVEL, JOURNEY.FRAME_MOUTH * s, wD);
 			return {
 				pos: mouth.clone().addScaledVector(axisDir, -Hn / (2 * k)),
 				dir: axisDir.clone(), // GAZE_IN ended with ALIGN: heading held
@@ -1363,7 +1472,7 @@ export default class Scene {
 			.clone()
 			.addScaledVector(axisDir, JOURNEY.LOOK * s)
 			.lerp(this.pivot, wS);
-		const Hn = lerp(2 * kMax * JOURNEY.LOOK * s, H_TRAVEL, wOut);
+		const Hn = lerp(2 * K_MAX * JOURNEY.LOOK * s, H_TRAVEL, wOut);
 		const pos = focus.addScaledVector(dir, -Hn / (2 * k));
 		// The crane (see LIFT / PUSH): up and forward into clear air, gone by
 		// the time the drain ends — the path recedes high over the solid
@@ -1407,7 +1516,7 @@ export default class Scene {
 			BANK.MAX *
 			Math.tanh(rate / BANK.RATE) *
 			win(h, [0, BANK.EDGE]) *
-			win(1 - h, [0, BANK.EDGE])
+			win(JOURNEY.LAND - h, [0, BANK.EDGE])
 		);
 	}
 	/* ------------------------------------------------------- page visibility */

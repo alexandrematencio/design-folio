@@ -77,7 +77,7 @@ distance au repos. Deux poses sur ce cercle portent tout le poids :
 | `0.125` | **marches** — azimut 90°, élévation 12° | les trois contremarches pile de face, empilées, séparées par les marches en blanc. C'est la vue du menu |
 | `0.625` | **arrière** | le solide vu de dos |
 | `0.2 → 0.875` | **la traversée** (v2) | juste après le menu, la ligne quitte l'orbite et passe dans le trou du solide — voir « La traversée du trou » |
-| `0.62746` | **la porte** (v2) | le progress s'arrête là pendant 750vh : la caméra vient de franchir le plan de sortie et le couloir des Selected Works prend la route — voir « La porte, et le couloir » |
+| `0.63388` | **la porte** (v2) | le progress s'arrête là pendant 625vh : la caméra vient de franchir le plan de sortie et le couloir des Selected Works prend la route — voir « La porte, et le couloir » |
 
 Ce sont des conséquences de la géométrie, pas des choix : les trois
 contremarches du solide regardent toutes +X (mesuré : x = 0, +1, +2 aux hauteurs
@@ -208,13 +208,14 @@ excès est listé. Les leçons payées sont dans les commentaires de `JOURNEY`
 (Scene.js) : balayer près du solide claque à 21-33× quel que soit le flanc ;
 reculer le long de la route repasse par le conduit (28×) ; la grue par le
 regard rase les marches (10-21×) — d'où la grue POSITIONNELLE, haut et vers
-l'avant. Reste un transit à ~5,6× la croisière sur 1,5 % de boucle (le
-panoramique de 166° est incompressible ; le reveal shippé de v1 tourne à
-4×) : c'est le plafond accepté de la jauge, resserrable avec `--budget 3`.
+l'avant. Reste un transit à **5,80×** la croisière sur 1,5 % de boucle (le panoramique
+de 166° est incompressible ; le reveal shippé de v1 tourne à 4×) : c'est le
+plafond accepté de la jauge, resserrable avec `--budget 3`. `--accel` ajoute la
+seconde différence — voir « L'amortissement » plus bas.
 
 Et parce que la seule façon honnête de ralentir un film piloté au scroll est
 d'allonger la route, **v2 roule sur 1200vh** de voyage (contre 800 pour v1),
-plus 750vh de plateau pour la galerie — 1950 en tout, inline dans v2.html.
+plus 625vh de plateau pour la galerie — 1825 en tout, inline dans v2.html.
 Le repos aimante toujours légèrement (`#maybeSnap`, v2 seulement), et tout
 reste une fonction pure du scroll : marche arrière gratuite.
 
@@ -231,7 +232,7 @@ L'orbite n'en a pas non plus : c'est la page au repos.
 C'est une **fonction pure de h**, lue sur la route et jamais intégrée :
 
 ```
-bank(h) = 30° × tanh( cap'(h) / 11 ) × win(h, [0, 0.03]) × win(1−h, [0, 0.03])
+bank(h) = 30° × tanh( cap'(h) / 11 ) × win(h, [0, 0.03]) × win(LAND−h, [0, 0.03])
 ```
 
 `cap'` est la différence centrée de l'azimut du regard (ε = 0,002 de l'étape),
@@ -261,12 +262,105 @@ molette, c'est-à-dire la courbure de la route. C'est ce qui est implémenté.
 
 `RATE = 11` est **calibré, pas choisi** : |cap'| mesuré sur toute l'étape vaut
 0,000 partout dans le conduit, culmine à **8,655 rad** dans ALIGN (h = 0,26) et
-**18,11 rad** dans SWEEP (h = 0,786). D'où un roulis mesuré de **−19,7°** au
-pic d'ALIGN et **+27,85°** au pic de SWEEP — les signes sont opposés parce que
-les deux virages le sont, ce qui est de la géométrie et pas un choix. Jauge :
-médiane 3,705 → 3,816, pire pas 20,95 → 20,63 (5,65× → 5,41× la croisière),
-plateau inchangé à 12,95 — la preuve que l'inclinaison ne franchit pas la
-porte.
+**18,11 rad** dans SWEEP (h = 0,786). D'où un roulis mesuré sur la caméra de
+rendu de **19,8°** au pic d'ALIGN (h = 0,260) et **29,0°** au pic de SWEEP
+(h = 0,795) — de signes opposés parce que les deux virages le sont, ce qui est
+de la géométrie et pas un choix. Jauge : médiane 3,705 → 3,816, pire pas
+20,95 → 20,63 (5,65× → 5,41× la croisière), plateau inchangé — la preuve que
+l'inclinaison ne franchit pas la porte.
+
+**La fenêtre de sortie se ferme sur `LAND`, et pas sur la fin de l'étape** —
+c'est le bug que la jauge d'accélération a trouvé. Écrite `win(1−h, …)` elle ne
+se fermait jamais : à partir de `LAND` (h = 0,96) c'est la caméra ortho de
+l'orbite qui dessine, et elle n'a aucune inclinaison. Or le balayage, une fois
+posé sur le regard vivant de l'orbite, lit toujours un virage — celui de
+l'orbite, 4,24 rad par unité de h — et s'incline dedans. Mesuré : **8,2° de
+roulis encore debout sur la dernière frame en perspective**, zéro sur la
+suivante. Un pas de **17,1** sur la jauge de flux contre 1,1 de part et d'autre,
+4,2× la croisière : le plus gros à-coup de toute l'étape, et aucune courbe
+n'aurait pu le lisser puisque c'était une porte qu'on avait oublié de fermer.
+Fenêtre fermée sur `LAND`, le même pas retombe à **1,18**.
+
+### L'amortissement : mesurer l'accélération, pas la vitesse (v2)
+
+Alexandre a signalé « deux mouvements rugueux, comme s'il n'y avait pas
+d'amortissement », sans dire lesquels. La jauge de flux ne pouvait pas les
+trouver : elle mesure la **vitesse** du film et le budget était tenu. Alors
+`tools/flow.mjs --accel` ajoute la **différence de cette différence** — combien
+le flux change d'un pas au suivant, c'est-à-dire l'accélération de l'image — et
+sort les huit pics, étiquetés par la phase où ils tombent (pics et pas
+échantillons : un moment rugueux fait plusieurs pas de large, et un tri brut
+dépenserait tout le tableau dessus). Lancée avant d'avoir touché à quoi que ce
+soit, elle a nommé les deux :
+
+| # | Avant | ×croisière | Après | ×croisière |
+|---|---|---|---|---|
+| 1 | LAND, h 0,967 | **3,96** | TRAVERSE, h 0,615 | 2,08 |
+| 2 | TRAVERSE, h 0,604 | **3,81** | plateau, t 0,341 | 1,31 |
+| 3 | TRAVERSE, h 0,526 | 2,03 | plateau, t 0,380 | 1,26 |
+| 4 | plateau, t 0,388 | 1,30 | TRAVERSE, h 0,511 | 1,23 |
+| 5 | plateau, t 0,552 | 1,27 | plateau, t 0,288 | 1,06 |
+| 6 | MORPH_IN, h 0,304 | 1,02 | plateau, t 0,678 | 1,06 |
+| 7 | plateau, t 0,788 | 0,99 | plateau, t 0,769 | 0,93 |
+| 8 | plateau, t 0,296 | 0,86 | plateau, t 0,433 | 0,92 |
+
+Les deux gros ont disparu. Ce qui reste en tête est le conduit qui se rue vers
+l'embrasure — à vitesse constante, l'écoulement optique d'un tunnel croît comme
+l'inverse de la distance au plan de sortie, donc c'est de la perspective et pas
+une couture. Les lignes « plateau » sont les **photographies qui passent** : la
+caméra du couloir avance maintenant à vitesse rigoureusement constante, donc
+toute accélération mesurée là-bas est du contenu, pas du mouvement. Elles
+montent un peu parce que le couloir est parcouru 20 % plus vite en molette.
+
+**1. Le quintique partout dans le voyage.** `smoothstep` est C1 : vitesse nulle
+aux bords, accélération qui saute de 0 à ±6. `smootherstep` (6t⁵ − 15t⁴ + 10t³)
+tue aussi la seconde dérivée. Il est **ajouté à côté** dans `utils.js`, jamais à
+la place : `index.html` est figé et partage ce fichier. `win()`, `traverseDepth`,
+`GAZE_IN`, `STITCH`, les fenêtres du banking et la grue passent au quintique ;
+l'orbite et le reveal de v1 gardent leur cubique. Ça se paie : la pente maximale
+d'un quintique vaut 1,875 contre 1,5, donc chaque fenêtre gagne un quart de
+vitesse de pointe — le pire pas de la jauge de flux passe de 20,6 à 23,2, soit
+5,80× la croisière, sous le budget de 6 mais avec moins de marge qu'avant.
+
+**2. La porte sans freinage.** La traversée était **une seule courbe en S** sur
+toute sa longueur : la caméra s'arrêtait presque à la bouche (0,016 unité monde
+par pas de 60 px de molette contre 0,319 au milieu — 5 % de la vitesse de
+pointe), repartait, puis levait le pied avant la porte (0,136) pendant que le
+couloir, lui, réaccélérait de 0,74 à 1 sur ses premiers 10 %. Deux changements
+de signe de l'accélération, dont un pile dans l'embrasure.
+
+Maintenant c'est trois morceaux : `MORPH_IN` accélère depuis le parking et
+**arrive à la croisière** (le cadre à la bouche est piloté par une courbe qui a
+une pente d'arrivée imposée, `rampTo` dans Scene.js — le fov, lui, garde sa
+fenêtre plate aux deux bouts, sinon la perspective prendrait un angle) ; la
+traversée roule **à plat** de la bouche jusqu'à la porte ; le frein n'arrive
+qu'**après** la porte, derrière le visiteur, face au cyclorama blanc où rien ne
+bouge. `CRUISE_UNTIL` est résolu, pas réglé : `avant / (avant + 2 × après)`, ce
+qui pose le genou exactement sur la porte.
+
+Mesuré, marche du scroll par pas constants de 60 px à travers la couture :
+**0,2219 unité monde par pas dans le conduit, 0,2228 dans le couloir** —
+rapport 1,004, plat d'un bout à l'autre. Avant : 0,0156 → 0,3185 → 0,1364 →
+0,1875, un rapport de 20,4 entre le pire et le meilleur pas de la même
+traversée. Marche arrière : les mêmes positions **au bit près** (écart maximal
+0,000e+0 sur 69 arrêts), ce qui est la seule chose qu'on peut demander à une
+fonction pure du scroll.
+
+**3. La porte que le banking avait oublié de fermer** — voir la section
+précédente : 8,2° de roulis abandonnés à la bascule ortho, un pas à 17,1.
+
+**Essayé et jeté.** Le premier suspect pour le pic de `LAND` était la parallaxe
+résiduelle de la caméra plate : à `FOV_FLAT = 0,5°` l'œil dérivé est à 655
+unités, la pièce en fait 19 de profondeur, donc le mur du fond est dessiné 0,3 %
+plus petit qu'en orthographique — et c'est sur ce mur qu'est imprimé le texte.
+Descendu à 0,15° (avec le plan proche relevé pour que le z-buffer suive), le pas
+mesurait **17,2 au lieu de 17,1** : rigoureusement rien. Reverti. L'élargissement
+de l'ε du banking (0,002 → 0,01) proposé au brief n'a pas été fait non plus :
+plus aucun pic ne tombe au bord d'un virage, donc il n'y avait rien à filtrer.
+
+**Lenis n'a pas été touché.** `lerp: 0.075` est le lissage temporel du scroll ;
+les à-coups étaient dans les courbes, pas dans la molette, et le baisser aurait
+ralenti tout le site, repos compris.
 
 ### La porte, et le couloir des Selected Works (v2)
 
@@ -287,23 +381,25 @@ rattrapage prenait les premiers 10 % du couloir, et c'était le seul mouvement
 qu'on pouvait prendre le couloir à faire. `RIDE_DROP` vaut zéro ; `RECENTRE` et
 son terme `rise` n'existent plus.
 
-Ce qui se mesure, à P (progress 0,627455, h 0,633267) : l'écart entre la caméra
-du voyage et le point analytique `ride(traverseDepth(h))` vaut **0** unité monde
-(pas « petit » : zéro), et la distance de l'œil à l'axe du conduit vaut zéro
-aussi — à la porte comme sur tout le couloir, t = 0,001 à 0,999. Avant, c'était
-0,183 unité monde à la porte, encore 0,120 à t = 0,05 et 0,008 à t = 0,1 : la
-remontée était bien là où Alexandre l'a vue. Au pixel, sur la frame de porte
-p = 0,5915, les arêtes haute et basse du carré de sortie tombent toutes deux à
-**408,20 px** du centre du cadre (asymétrie 0,00 px) contre **530,65 et
-285,74 px** avant — 245 px d'écart, un quart de la hauteur de l'image. Dans le
-couloir à t = 0,02, les dix premières traverses du treillis relevées sur la
-colonne centrale sont à **0,0 px** de leurs jumelles d'en face, contre des
+Ce qui se mesure, à P : l'écart entre la caméra du voyage et le point analytique
+`ride(traverseDepth(h))` vaut **0** unité monde (pas « petit » : zéro), et la
+distance de l'œil à l'axe du conduit vaut zéro aussi — à la porte comme sur tout
+le couloir, t = 0,001 à 0,999. Avant, c'était 0,183 unité monde à la porte,
+encore 0,120 à t = 0,05 et 0,008 à t = 0,1 : la remontée était bien là où
+Alexandre l'a vue. Au pixel, sur la frame de porte p = 0,5915, les arêtes haute
+et basse du carré de sortie tombent au même nombre de pixels du centre du cadre
+— **353,30 px** de part et d'autre, asymétrie 0,00 px — contre **530,65 et
+285,74 px** avant, soit 245 px d'écart, un quart de la hauteur de l'image. (Le
+353 était 408 juste après ce premier passage : la refonte du pacing, juste
+au-dessus, recule un peu la caméra à ce progress-là. Elle ne touche pas à la symétrie.)
+Dans le couloir à t = 0,02, les dix premières traverses du treillis relevées sur
+la colonne centrale tombent à **0,0 px** de leurs jumelles d'en face, contre des
 écarts alternés jusqu'à 15,5 px avant.
 
-Tout ce qui en dérive a suivi sans une retouche : `PLATEAU` = 0,627455,
-`rideRate(P)` = 21,19 largeurs de conduit par unité de progress (14,3 par unité
-de h), `SEAM_SPEED` = 0,7358 — les mêmes qu'avant, la ligne de roulage n'ayant
-bougé que perpendiculairement à la route.
+Tout ce qui en dérive a suivi sans une retouche — la ligne de roulage n'ayant
+bougé que perpendiculairement à la route, `PLATEAU`, `rideRate(P)` et
+`SEAM_SPEED` sont sortis inchangés de ce premier passage. C'est le second, celui
+du pacing, qui les a bougés.
 
 C'est pour ça que **l'approche est rendue dans le z-buffer du logo**, avec sa
 caméra de rendu et sans effacer la profondeur (`Three.#render`, passe
@@ -315,15 +411,17 @@ profondeur jetée entre les passes) et ça ne pouvait pas se lire comme un
 passage : c'était une double exposition.
 
 Le plateau s'ouvre quand la caméra a **franchi la porte**, pas avant :
-`PLATEAU` est résolu, pas choisi — `progressPastExit(0.1)` inverse l'easing de
-`TRAVERSE` par dichotomie et rend `0.62746` (h = 0.63327 ; le plan de sortie
-est croisé à h = 0.62691). Et la caméra du couloir **part à la vitesse du
-conduit à cet endroit** : 14,3 largeurs de conduit par unité de h, soit 0,735
-de la croisière du couloir, parce que `TRAVERSE` freine sur sa fin. La rampe
-qui rejoint la croisière est intégrée en forme close, et la croisière est
-résolue pour que le trajet fasse toujours exactement 18 largeurs (`travelOf`,
-Gallery.js). C1 à la couture : ni la position ni la vitesse ne trahissent le
-changement de scène.
+`PLATEAU` est résolu, pas choisi — `progressPastExit(JOURNEY.DOOR_OVER)` inverse
+le pacing de `TRAVERSE` par dichotomie et rend `0.63388` (h = 0.64279), qui est
+exactement le genou où la traversée arrête de rouler à plat et commence à
+freiner. Et le couloir ne « rattrape » plus rien : le conduit tient sa croisière
+jusque dans l'embrasure, et `GALLERY.VH` est résolu pour que le couloir tienne
+la même — 18 largeurs de conduit à 34,43 largeurs par unité de progress font
+`1200 × 18 / 34,43` = 627,3vh, arrondis à **625**. `SEAM_SPEED` vaut 0,9963 :
+0,4 % d'écart, quatre fois moins qu'un pas de la jauge de flux. Il n'y a donc
+plus de rampe du tout, `travelOf` a disparu et le trajet vaut `travel = t`. Ni
+la position ni la vitesse ne trahissent le changement de scène, aux deux
+coutures.
 
 La sortie est **blanche sur blanche** : sur les derniers 10 % du trajet le
 treillis s'éteint et il ne reste que du papier ; sur les derniers 6 % du
@@ -334,12 +432,12 @@ arrière, le papier se lève, le treillis se rallume, on repasse la porte à
 reculons dans le cobalt.
 
 La jauge suit : `tools/flow.mjs` échantillonnait le progress, or le plateau est
-750vh où le progress ne bouge pas — depuis que le couloir est visible pendant
-l'approche, ça mettait côte à côte deux images séparées par 750vh et appelait
+625vh où le progress ne bouge pas — depuis que le couloir est visible pendant
+l'approche, ça mettait côte à côte deux images séparées par tout le plateau et appelait
 ça un pas (9× la croisière mesurés, pour une coupe qui n'existe pas). La jauge
 parcourt maintenant le plateau sur son propre axe, avec le nombre de pas qui
-fait **la même molette par pas** sur les deux axes : 251 pas, médiane 6,2,
-pic 3,5× la croisière du voyage.
+fait **la même molette par pas** sur les deux axes : 209 pas, médiane 6,55,
+pic 3,69× la croisière du voyage.
 
 ### Le texte suit sa visibilité (v2)
 
@@ -386,7 +484,8 @@ src/
   main.js / main-v2.js       les deux points d'entrée : la règle d'encrage, un mot
 tools/
   shoot.mjs                  frames déterministes + contrôle du repos
-  flow.mjs                   la jauge de flux optique (voyage + plateau)
+  flow.mjs                   la jauge de flux optique (voyage + plateau),
+                             et --accel pour son accélération
   curation.mjs               bake des photos de la curation dans public/
   measure-glyph-ink.py       la mesure qui fixe GLYPH_INK
   bake-glyph-light.py        ce que chaque face voit de la pièce → .light.json

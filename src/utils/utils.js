@@ -2,6 +2,18 @@ export const clamp = (v, min = 0, max = 1) => Math.min(max, Math.max(min, v));
 
 export const smoothstep = (t) => t * t * (3 - 2 * t);
 
+/**
+ * The same S, with one more zero at each end: 6t⁵ − 15t⁴ + 10t³. Its second
+ * derivative dies at 0 and 1 as well, so two curves that meet at an edge agree
+ * on their ACCELERATION and not merely on their speed. smoothstep leaves the
+ * acceleration stepping from 0 to ±6 at every seam, and that step is what reads
+ * as a jolt in a ride that is otherwise perfectly continuous.
+ *
+ * ADDED next to smoothstep, never in place of it: index.html is shipped and
+ * frozen, and it shares this file. The orbit and v1's reveal keep the cubic.
+ */
+export const smootherstep = (t) => t * t * t * (t * (t * 6 - 15) + 10);
+
 export const lerp = (a, b, t) => a + (b - a) * t;
 
 export const TAU = Math.PI * 2;

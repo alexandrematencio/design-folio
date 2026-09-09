@@ -20,12 +20,18 @@
 			800vh): the tunnel journey wants a chauffeur's pace, and the only
 			honest way to slow a scroll-driven film is more road.
 
-			1950 = 1200 + 750: the extra 750vh is the GALLERY PLATEAU, the
+			1825 = 1200 + 625: the extra 625vh is the GALLERY PLATEAU, the
 			stretch where the orbit stands still and the Selected Works run
-			past inside the bore. The two numbers live together in GALLERY
-			(src/core/Three.js) — change one here and the map breaks.
+			past inside the bore. It is not a taste value — it is the wheel the
+			corridor's 18 bore widths need to run at the SAME speed the conduit
+			crosses the door at (GALLERY in scenes/Gallery.js does the sum, and
+			warns in dev if the two ever drift apart). It was 750, and the
+			corridor was then a fifth slower than the road it continues.
+
+			The two numbers live together in GALLERY — change one here and the
+			map breaks.
 		-->
-		<div id="scroll-spacer" style="height: 1950vh" aria-hidden="true"></div>
+		<div id="scroll-spacer" style="height: 1825vh" aria-hidden="true"></div>
 
 		<!--
 			The menu: one item per step, written on the step fronts. Empty and

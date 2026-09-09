@@ -31,8 +31,18 @@
  * the 6x budget was calibrated against, and folding 250 corridor steps into it
  * would move the bar under every number ever recorded here.
  *
+ * --accel ADDS THE SECOND DIFFERENCE, and it answers a different question.
+ * Flow is the speed of the film; the difference of the flow between two
+ * consecutive steps is its ACCELERATION. A ride can sit well inside the 6x
+ * budget and still feel rough: every phase here eases with zero SLOPE at its
+ * edges (smoothstep is C1) but not zero curvature, so the acceleration jumps at
+ * every seam, and a train cannot do that. The eight worst jumps are printed
+ * with the phase they fall in — that list is the map of the rough spots, and it
+ * is what the quintic pass is judged on.
+ *
  *   npm run dev            # in another shell
  *   node tools/flow.mjs                       # v2, 400 steps
+ *   node tools/flow.mjs --accel               # + the eight roughest steps
  *   node tools/flow.mjs --url http://localhost:5180/ --steps 200
  */
 import puppeteer from "puppeteer-core";
@@ -153,6 +163,29 @@ try {
 		return out;
 	}, STEPS);
 
+	// The phase map, read off the source of truth rather than copied here: the
+	// labels have to keep telling the truth the day a window is moved, which is
+	// the very day this tool is being read.
+	const marks = args.accel
+		? await page.evaluate(async () => {
+				const S = await import("/src/scenes/Scene.js");
+				const G = await import("/src/scenes/Gallery.js");
+				const { FROM, TO, STITCH, ALIGN, MORPH_IN, TRAVERSE, MORPH_OUT, LAND } =
+					S.JOURNEY;
+				return {
+					FROM,
+					TO,
+					STITCH,
+					ALIGN,
+					MORPH_IN,
+					TRAVERSE,
+					MORPH_OUT,
+					LAND,
+					doorH: S.journeyH(G.GALLERY.PLATEAU),
+				};
+			})
+		: null;
+
 	const journey = rows.filter((r) => r.leg === "journey");
 	const plateau = rows.filter((r) => r.leg === "plateau");
 	const sorted = journey.map((r) => r.flow).sort((a, b) => a - b);
@@ -194,6 +227,75 @@ try {
 			const mean = band.reduce((t, r) => t + r.flow, 0) / (band.length || 1);
 			console.log(
 				`  ${(b / 10).toFixed(2)}  ${mean.toFixed(3)}  ${"#".repeat(Math.round((mean / median) * 8))}`,
+			);
+		}
+	}
+
+	/* ------------------------------------------- the acceleration of the film */
+
+	if (marks) {
+		const h = (p) => (p - marks.FROM) / (marks.TO - marks.FROM);
+		// Where a step LANDS names it. The two seam steps are called out by
+		// name: they are the ones that cross a scene, and they are the reason
+		// the plateau had to be put on this same ruler in the first place.
+		const phaseOf = (row, prev) => {
+			if (row.leg === "plateau") {
+				return prev?.leg === "journey" ? "door-in" : "plateau";
+			}
+			if (prev?.leg === "plateau") return "door-out";
+			const t = h(row.p);
+			if (t <= 0 || t >= 1) return "orbit";
+			if (t < marks.STITCH) return "STITCH";
+			if (t < marks.ALIGN[1]) return "ALIGN";
+			if (t < marks.TRAVERSE[0]) return "MORPH_IN";
+			if (t < marks.doorH) return "TRAVERSE";
+			if (t < marks.MORPH_OUT[0]) return "TRAVERSE-tail";
+			if (t < marks.LAND) return "SWEEP/MORPH_OUT";
+			return "LAND";
+		};
+
+		// |d flow| between consecutive steps, on the same ruler as the flow
+		// itself (a multiple of the journey's cruise) so the two tables can be
+		// read side by side.
+		const accel = [];
+		for (let i = 1; i < rows.length; i++) {
+			accel.push({
+				row: rows[i],
+				d: Math.abs(rows[i].flow - rows[i - 1].flow),
+				phase: phaseOf(rows[i], rows[i - 1]),
+			});
+		}
+		const sortedA = accel.map((a) => a.d).sort((a, b) => a - b);
+		const amed = sortedA[sortedA.length >> 1];
+
+		// PEAKS, not the eight largest samples: one rough moment is several
+		// steps wide, and a plain sort would spend the whole table on it. A
+		// taken peak masks its four neighbours on either side, so the list is
+		// eight DIFFERENT places on the ride.
+		const MASK = 4;
+		const taken = [];
+		const order = accel
+			.map((a, i) => ({ ...a, i }))
+			.sort((a, b) => b.d - a.d);
+		for (const cand of order) {
+			if (taken.length >= 8) break;
+			if (taken.some((t) => Math.abs(t.i - cand.i) <= MASK)) continue;
+			taken.push(cand);
+		}
+
+		console.log(
+			`\nacceleration |d flow| per step  median ${amed.toFixed(3)}` +
+				`  (${(amed / median).toFixed(3)}x cruise)`,
+		);
+		console.log("  the eight roughest places on the ride:");
+		for (const [n, a] of taken.entries()) {
+			const where =
+				a.row.leg === "plateau"
+					? `t=${a.row.t.toFixed(3)}      `
+					: `p=${a.row.p.toFixed(4)} h=${h(a.row.p).toFixed(3)}`;
+			console.log(
+				`  ${n + 1}. ${a.phase.padEnd(16)} ${where}  ` +
+					`|d| ${a.d.toFixed(3)}  (${(a.d / median).toFixed(2)}x cruise)`,
 			);
 		}
 	}

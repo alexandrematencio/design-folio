@@ -14,9 +14,11 @@ import { JOURNEY, journeyH, progressPastExit, rideRate } from "./Scene";
  * axis, same square section, and the same ride line — which is the axis itself,
  * so the eye is concentric with both tubes from the parking spot to the far
  * end. Built in the glyph's own world frame. The two volumes never share a
- * cubic inch, so there is nothing to fade. The
- * visitor rolls through cobalt, crosses a door, and rolls on through paper —
- * the matter changes where the geometry changes, and the camera never stops.
+ * cubic inch, so there is nothing to fade. The visitor rolls through cobalt,
+ * crosses a door, and rolls on through paper — the matter changes where the
+ * geometry changes, the camera never stops, and it never changes pace either:
+ * the conduit holds its cruise through the doorway and the corridor is scaled
+ * to that same speed (GALLERY.VH below).
  *
  * WHICH IS WHY THE APPROACH IS DRAWN IN THE LOGO'S OWN Z-BUFFER, with the
  * logo's own render camera and no depth clear (Three.#render). From inside a
@@ -61,7 +63,7 @@ const GRID = {
 	 * Photographs, two per row. 16 rows is the curation — 31 baked images, see
 	 * tools/curation.mjs. It is a constant rather than a count read off the
 	 * JSON because the LENGTH of the tunnel, and with it the pacing of the
-	 * 750vh plateau, must not depend on when a fetch happens to land.
+	 * 625vh plateau, must not depend on when a fetch happens to land.
 	 */
 	ROWS: 16,
 	/** Cells between two rows. 4 = one bore width: a square rhythm. */
@@ -86,14 +88,9 @@ const GRID = {
 	INSET: 0.006,
 };
 
-/**
- * How far past the bore's exit plane the ride must stand, in bore widths, for
- * the door to count as crossed and the plateau to open. Small on purpose: at
- * 0.1 the conduit is behind the eye and the frame is all corridor, while the
- * traverse — which eases OUT on its end — still has 43 % of its cruise left to
- * hand over. Pushed to 0.2 the handover speed drops to 30 %, measured.
- */
-const DOOR_OVER = 0.1;
+const CELL = 1 / GRID.CELLS;
+/** How far the camera travels between the two seams. A whole number of CELLs. */
+const LENGTH = (GRID.LEAD + (GRID.ROWS - 1) * GRID.PITCH + GRID.TAIL) * CELL;
 
 /**
  * THE PLATEAU — the stretch of scroll where the orbit stands still and the
@@ -101,25 +98,26 @@ const DOOR_OVER = 0.1;
  * one onto the other (span() there); these are the numbers behind that map.
  *
  * PLATEAU is not a taste value, and no longer a hand-tuned one either: it is
- * the progress at which the journey's camera has CROSSED THE DOOR. Solved,
- * not guessed — progressPastExit inverts the traverse's own easing (Scene.js).
- * At DOOR_OVER = 0.1 that lands on progress 0.62748, h = 0.63328, where the
- * exit plane itself was crossed at h = 0.62691.
+ * the progress at which the journey's camera has CROSSED THE DOOR. Solved, not
+ * guessed — progressPastExit inverts the traverse's own pacing (Scene.js). At
+ * JOURNEY.DOOR_OVER = 0.1 that lands on progress 0.63388, h = 0.64279, which
+ * is exactly the knee where the traverse stops cruising and starts braking.
  *
- * VH follows from the corridor's length, not the other way round: it is 18
- * bore widths long, and 750vh of wheel spends ~41vh on each of them — against
- * ~57vh per bore width at the door and ~24vh mid-bore, so the corridor is a
- * road the conduit accelerates onto and then settles from. All 750 go to the
- * ride now; there is no entry fade left to pay for.
+ * VH IS SOLVED TOO, and it is the whole of the second pass. The corridor is 18
+ * bore widths long; the conduit crosses the door at RIDE_RATE, its own cruise;
+ * so the plateau must be worth LOOP_VH × LENGTH / rideRate(PLATEAU) = 627.3vh
+ * of wheel for the corridor to run at that same speed. 625 is that number
+ * rounded to something a human can put in an HTML attribute, and it leaves the
+ * corridor 0.4 % faster than the conduit at the door — a mismatch four times
+ * smaller than one step of the flow gauge. It used to be 750, and the corridor
+ * then started 26 % slow and spent a tenth of the trip catching up.
  */
 export const GALLERY = {
 	LOOP_VH: 1200, // what v2.html's spacer was before the plateau
-	VH: 750, // what the plateau adds to it
-	PLATEAU: progressPastExit(DOOR_OVER),
+	VH: 625, // what the plateau adds to it — solved, see above
+	PLATEAU: progressPastExit(JOURNEY.DOOR_OVER),
 };
 
-/** Fraction of the trip the corridor takes to reach its own cruise speed. */
-const RAMP = 0.1;
 /** Fraction of the trip over which the corridor opens out: the lattice goes. */
 const OPEN = 0.1;
 /** Fraction of the plateau the exit veil owns: paper dissolving into room. */
@@ -129,42 +127,30 @@ const HOVER_SCALE = 1.03;
 /** Seconds a photograph takes to arrive once its texture is decoded. */
 const ARRIVAL = 0.4;
 
-const CELL = 1 / GRID.CELLS;
-/** How far the camera travels between the two seams. A whole number of CELLs. */
-const LENGTH = (GRID.LEAD + (GRID.ROWS - 1) * GRID.PITCH + GRID.TAIL) * CELL;
-
 /**
  * THE SPEED AT THE DOOR, in fractions of LENGTH per unit of t — the corridor's
- * own units. This is not an ease anybody chose: it is C1 continuity across the
- * seam, converted.
+ * own units. Nobody chose it and nothing eases it any more: the conduit holds
+ * its cruise through the doorway, VH is solved so the corridor holds the same
+ * one, and the trip is therefore travel = t, a straight run.
  *
  * The conduit's ride runs at rideRate(PLATEAU) bore widths per unit of
  * PROGRESS. Below the plateau progress advances k per unit of raw scroll and t
  * advances 1/g, and k × g is exactly VH / LOOP_VH — so the conversion is that
  * ratio and a division by LENGTH, with the glyph's scale cancelling on both
- * sides. Measured here: 0.735, because TRAVERSE is easing out at the door.
- *
- * The corridor therefore STARTS slower than its own cruise and catches up over
- * RAMP. CRUISE is solved rather than set to 1, so that the ramp still delivers
- * exactly LENGTH over the plateau: get that wrong and the far seam moves,
- * which is the one place the periodicity of the lattice is load-bearing.
+ * sides. It is kept, and checked out loud, because it is the one number that
+ * says the two roads are one road: three constants in two files have to agree
+ * for it to be 1, and none of them knows about the other two.
  */
 const SEAM_SPEED =
 	(rideRate(GALLERY.PLATEAU) * (GALLERY.VH / GALLERY.LOOP_VH)) / LENGTH;
-/** ∫ of the ramp's smoothstep over the trip is 1 − RAMP/2; solve for area 1. */
-const CRUISE = (1 - (RAMP / 2) * SEAM_SPEED) / (1 - RAMP / 2);
-
-/**
- * Distance travelled, as a fraction of LENGTH, at position `t` on the plateau.
- * The integral of speed(t) = lerp(SEAM_SPEED, CRUISE, smoothstep(t / RAMP)),
- * in closed form: ∫₀ᵘ smoothstep = u³ − u⁴/2, scaled by RAMP, then a straight
- * run. travelOf(0) = 0 and travelOf(1) = 1 exactly, by the choice of CRUISE.
- */
-const travelOf = (t) => {
-	const u = Math.min(t / RAMP, 1);
-	const area = RAMP * (u ** 3 - u ** 4 / 2) + Math.max(0, t - RAMP);
-	return SEAM_SPEED * t + (CRUISE - SEAM_SPEED) * area;
-};
+if (import.meta.env.DEV && Math.abs(SEAM_SPEED - 1) > 0.02) {
+	// A warning rather than a note in a README: tools/shoot.mjs fails the run
+	// on any console noise, so this is an assertion with a shorter fuse.
+	console.warn(
+		`gallery: the corridor runs at ${SEAM_SPEED.toFixed(3)}x the conduit's ` +
+			"speed at the door — GALLERY.VH and the ride's cruise have drifted apart",
+	);
+}
 
 /**
  * The walls, in the order photographs take them. Each carries where it sits,
@@ -324,7 +310,9 @@ export default class Gallery {
 		const frame = this.frame;
 		if (!frame) return;
 
-		const travel = travelOf(t);
+		// travel = t: the corridor is the conduit's road at the conduit's speed,
+		// so there is nothing between the wheel and the distance (SEAM_SPEED).
+		const travel = t;
 		// The exit veil: paper going transparent over the logo's own frame.
 		const veil = smoothstep(clamp((t - (1 - VEIL)) / VEIL));
 		this.pass = veil > 0 ? "veil" : "solo";
@@ -334,10 +322,10 @@ export default class Gallery {
 		this.live = veil <= 0;
 
 		// DERIVED FROM THE SEAM, never rebuilt from scratch: at travel = 0 this
-		// IS the journey's own camera at the door, pose for pose — and travelOf
-		// gives it the journey's SPEED there too, so the handover shows up in
-		// neither position nor velocity. Nothing lifts the eye any more: the
-		// ride line is the axis on both sides of the door (RIDE_DROP, Scene.js),
+		// IS the journey's own camera at the door, pose for pose — and it runs
+		// at the journey's SPEED there too, so the handover shows up in neither
+		// position nor velocity, at either end. Nothing lifts the eye any more:
+		// the ride line is the axis on both sides of the door (RIDE_DROP there),
 		// so the camera is already in the middle of the square when it arrives
 		// and there is no height to adjust once inside. There used to be a
 		// recentring here over the first tenth of the trip, and it was the one
@@ -404,7 +392,7 @@ export default class Gallery {
 		// PLATEAU was solved for. Taken from the geometry rather than off the
 		// live camera, so the corridor can be built on ANY frame — the
 		// approach needs it long before the camera reaches the plateau.
-		const zSeam = zDoor + DOOR_OVER;
+		const zSeam = zDoor + JOURNEY.DOOR_OVER;
 		const zFrom = zDoor;
 		const zTo = zSeam + LENGTH + GRID.AHEAD;
 

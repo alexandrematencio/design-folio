@@ -244,7 +244,7 @@ class Three {
 	 * which is a double exposure by construction.
 	 *
 	 * "solo" skips the logo pass outright. Not tidiness: it is a VSM shadow
-	 * map, a projection and a room that nobody can see, over 750vh of plateau.
+	 * map, a projection and a room that nobody can see, over 625vh of plateau.
 	 *
 	 * "veil" is the one place a depth clear survives, and it earns it: the two
 	 * passes are two unrelated cameras (the logo parked at the door, the

@@ -56,8 +56,9 @@ const OUT = path.join(ROOT, args.out ?? "tools/shots");
 // square on at 0.125, the back at 0.625) and two points in between.
 //
 // The last three are the JOURNEY'S TWO TURNS, at the progress where each
-// leans hardest (BANK in Scene.js): 0.376 is ALIGN's peak, h = 0.261, and
-// 0.731 / 0.774 straddle SWEEP's, h = 0.787. On v2 the horizon in those three
+// leans hardest (BANK in Scene.js): 0.376 is ALIGN's peak, h = 0.260, worth
+// 19.8 degrees of roll on the render camera, and 0.731 / 0.774 straddle
+// SWEEP's, h = 0.795, worth 29.0. On v2 the horizon in those three
 // must be visibly off level — left in the first, right in the other two —
 // and the scene must be whole, not sheared. On v1 they are ordinary orbit
 // poses and prove nothing; they cost a screenshot.
@@ -72,10 +73,11 @@ const GALLERY_FRAMES = [0.02, 0.06, 0.1, 0.5, 0.9, 0.94, 0.98];
 
 // The APPROACH, in progress rather than plateau position: the door seen from
 // inside the conduit. h = 0.58 and 0.61 of the journey's leg (JOURNEY.FROM +
-// h × 0.675), where the camera is 0.07 and 0.90 bore widths past the bore's
-// centre — cobalt walls all round, the corridor carrying on through the exit
-// rectangle. This is the frame the whole rewrite exists for: one picture, one
-// depth, no ghost.
+// h × 0.675), where the camera is 0.11 bore widths BEFORE the bore's centre and
+// 0.59 past it — cobalt walls all round, the corridor carrying on through the
+// exit rectangle. This is the frame the whole rewrite exists for: one picture,
+// one depth, no ghost. (The two depths moved when the traverse stopped being
+// one S-curve: at a flat cruise the same progress is a different place.)
 const DOOR_FRAMES = [0.5915, 0.61175];
 
 const BRAND = {
