@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<link rel="icon" type="image/svg+xml" href="/glyph-alxmtnc.svg" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<meta
+			name="description"
+			content="Alex Matencio — creative mind, synesthete, designer. An anamorphic landing page."
+		/>
+		<title>Hi, I'm Alex</title>
+	</head>
+	<body>
+		<!-- The WebGL canvas is injected here by WebGLContext. -->
+		<div id="app"></div>
+
+		<!-- Gives Lenis a scrollable range. Nothing is ever painted in it. -->
+		<div id="scroll-spacer" aria-hidden="true"></div>
+
+		<!--
+			Offscreen DOM source — this is what gets rasterized and projected.
+			Positioning is inlined so the element sits offscreen from the very
+			first paint: style.css is parsed as a module, so without this the
+			raw content flashes in body flow before the stylesheet applies.
+
+			This block is ALSO the accessible, crawlable copy of the page: it
+			stays in the DOM as real text (aria-hidden is deliberately NOT set,
+			the WebGL canvas carries aria-hidden instead).
+		-->
+		<div
+			id="page-host"
+			style="
+				position: fixed;
+				top: 0;
+				left: -200vw;
+				width: 100vw;
+				height: 100vh;
+				pointer-events: none;
+				z-index: -1;
+			"
+		>
+			<article id="page">
+				<div class="page__inner">
+					<h1 class="display">Hi,&nbsp;I&rsquo;m&nbsp;Alex.</h1>
+
+					<div class="copy">
+						<p class="lead">
+							A creative mind with several forms of high-functioning
+							synesthesia, obsessed with how the brain builds a mind — and with
+							showing that to other people.
+						</p>
+
+						<p>
+							I design visual work that has to please the client and convince
+							their customers: appealing, functional, fool-proof. The rest of my
+							attention goes to neuro-cognitive science, evolutionary cognitive
+							psychology, and crowd dynamics from three people to five billion.
+						</p>
+
+						<p>
+							Photography is the passion. Experiments are the habit — like my
+							LENIA pet, running live somewhere below.
+						</p>
+					</div>
+				</div>
+
+				<p class="hint" aria-hidden="true">Scroll — it isn&rsquo;t flat</p>
+			</article>
+		</div>
+
+		<script type="module" src="/src/main.js"></script>
+	</body>
+</html>

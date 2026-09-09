@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<link rel="icon" type="image/svg+xml" href="/glyph-alxmtnc.svg" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<meta
+			name="description"
+			content="Alex Matencio — creative mind, synesthete, designer. An anamorphic landing page, lit as one material."
+		/>
+		<title>Hi, I'm Alex — one material</title>
+	</head>
+	<body>
+		<!-- The WebGL canvas is injected here by WebGLContext. -->
+		<div id="app"></div>
+
+		<!--
+			Gives Lenis a scrollable range. Nothing is ever painted in it.
+			v2 rides half again longer than v1 (1200vh vs the stylesheet's
+			800vh): the tunnel journey wants a chauffeur's pace, and the only
+			honest way to slow a scroll-driven film is more road.
+		-->
+		<div id="scroll-spacer" style="height: 1200vh" aria-hidden="true"></div>
+
+		<!--
+			The menu: one item per step, written on the step fronts. Empty and
+			invisible until the orbit reaches the square-on pose — main-v2.js
+			positions each item on its riser every frame via stepAnchors(), so
+			the labels are glued to the geometry, not to scroll numbers.
+		-->
+		<nav id="step-menu" aria-label="Sections">
+			<button class="step-menu__item" data-step="0" data-dest="agency">
+				Agency
+			</button>
+			<button class="step-menu__item" data-step="1" data-dest="photography">
+				Photography
+			</button>
+			<button class="step-menu__item" data-step="2" data-dest="design">
+				Design
+			</button>
+		</nav>
+
+		<!--
+			The veil the dive lands on: painted the colour of the FIRST FRAME of
+			the destination's own splash, so arriving there is a match cut, not
+			a flash. main-v2.js sets its colour per destination and fades it in
+			over the end of the dive.
+		-->
+		<div id="dive-veil" aria-hidden="true"></div>
+
+		<!--
+			Offscreen DOM source — this is what gets rasterized and projected.
+			Positioning is inlined so the element sits offscreen from the very
+			first paint: style.css is parsed as a module, so without this the
+			raw content flashes in body flow before the stylesheet applies.
+
+			This block is ALSO the accessible, crawlable copy of the page: it
+			stays in the DOM as real text (aria-hidden is deliberately NOT set,
+			the WebGL canvas carries aria-hidden instead).
+		-->
+		<div
+			id="page-host"
+			style="
+				position: fixed;
+				top: 0;
+				left: -200vw;
+				width: 100vw;
+				height: 100vh;
+				pointer-events: none;
+				z-index: -1;
+			"
+		>
+			<article id="page">
+				<div class="page__inner">
+					<h1 class="display">Hi,&nbsp;I&rsquo;m&nbsp;Alex.</h1>
+
+					<div class="copy">
+						<p class="lead">
+							A creative mind with several forms of high-functioning
+							synesthesia, obsessed with how the brain builds a mind, how minds
+							interact with one another and about dynamics of groups of minds
+							— and talking about that to other people.
+						</p>
+
+						<p>
+							I design visual work that has to please the client and convince
+							their customers: appealing, functional, fool-proof. The rest of my
+							attention goes to neuro-cognitive and cognitive sciences in
+							general, evolutionary psychology, anthropology, and crowd
+							dynamics from 2 people to billions.
+						</p>
+
+						<p>
+							Photography is one of my passions, good design and
+							entrepreneurship are two others. Experiments are the habit — like
+							my <a href="/lenia.html">LENIA</a> pet, running live within this
+							website.
+						</p>
+					</div>
+				</div>
+
+				<p class="hint" aria-hidden="true">Scroll — it isn&rsquo;t flat</p>
+			</article>
+		</div>
+
+		<script type="module" src="/src/main-v2.js"></script>
+	</body>
+</html>

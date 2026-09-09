@@ -1,0 +1,267 @@
+/* --------------------------------------------------------------------------
+   Anamorphic landing — page styles
+
+   Everything under #page is rasterized into a texture and projected onto the
+   3D scene. So this stylesheet is not "the look of the site": it IS the
+   texture. Two consequences worth remembering:
+
+   1. No :hover, no transition, no animation under #page. The rasterizer takes
+      a still. Anything that moves is simply never seen.
+   2. Fonts must be self-hosted and inlined (see collectDocumentCss.js). The
+      SVG <foreignObject> runs sandboxed and cannot reach the network.
+   -------------------------------------------------------------------------- */
+
+/* Inter, self-hosted. Brand rule: zero third-party font request. */
+@font-face {
+	font-family: "Inter";
+	font-style: normal;
+	font-weight: 100 900;
+	font-display: block;
+	src: url("/fonts/inter-latin-var.woff2") format("woff2");
+	unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6,
+		U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122,
+		U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+	font-family: "Inter";
+	font-style: normal;
+	font-weight: 100 900;
+	font-display: block;
+	src: url("/fonts/inter-latin-ext-var.woff2") format("woff2");
+	unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7,
+		U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F,
+		U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+		U+A720-A7FF;
+}
+
+:root {
+	/* Brand tokens — brand/brand-book.md §4 "Gallery Paper" */
+	--color-bg: #fafaf8;
+	--color-fg: #0a0a0a;
+	--color-fg-muted: #6e6960;
+	--color-accent: #0013ff;
+
+	/* Display is a system grotesque — never loaded, never a network request. */
+	--font-display: "Helvetica Neue", Helvetica, Arial, "Liberation Sans",
+		sans-serif;
+	--font-editorial: "Inter", var(--font-display);
+
+	/* Page frame — brand 32 / 64 system, fluid between the two. */
+	--gutter: clamp(1.5rem, 4.2vw, 4rem);
+}
+
+* {
+	box-sizing: border-box;
+	margin: 0;
+	padding: 0;
+	-webkit-font-smoothing: antialiased;
+}
+
+html,
+body {
+	background: var(--color-bg);
+	color: var(--color-fg);
+	font-family: var(--font-display);
+	overscroll-behavior: none;
+}
+
+body {
+	/* The real page is offscreen; nothing here must ever scroll sideways. */
+	overflow-x: hidden;
+}
+
+#app {
+	position: fixed;
+	inset: 0;
+	pointer-events: none;
+}
+
+/* Lenis needs a range to travel, and this range IS the orbit: one pass over
+   it is one full turn around the glyph. 800vh puts the step view — a 45°
+   turn — about one screen of scrolling away, which is close enough to find by
+   accident and far enough not to trip over. */
+#scroll-spacer {
+	position: relative;
+	width: 1px;
+	height: 800vh;
+	pointer-events: none;
+}
+
+#page-host {
+	position: fixed;
+	top: 0;
+	left: -200vw;
+	width: 100vw;
+	height: 100vh;
+	pointer-events: none;
+	z-index: -1;
+}
+
+/* ---------------------------------------------------------------- the page */
+
+#page {
+	position: relative;
+	width: 100%;
+	height: 100%;
+	padding: var(--gutter);
+	display: flex;
+	flex-direction: column;
+	background: var(--color-bg);
+	color: var(--color-fg);
+}
+
+.page__inner {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	gap: clamp(1.5rem, 4vh, 3rem);
+}
+
+/* The name, set as large as the frame allows. Helvetica 900, tracking pulled
+   in hard — brand §5.3 / §5.4: at display sizes the tracking goes negative. */
+.display {
+	font-family: var(--font-display);
+	font-weight: 900;
+	font-size: clamp(2.75rem, 9.4vw, 9.5rem);
+	line-height: 0.9;
+	letter-spacing: -0.055em;
+	max-width: 11ch;
+}
+
+/* Editorial copy — Inter, brand §5.7 three-voice scale.
+   Column is kept off the right third: that is where the glyph lands. */
+.copy {
+	margin-top: auto;
+	max-width: min(52ch, 46vw);
+	font-family: var(--font-editorial);
+	display: flex;
+	flex-direction: column;
+	gap: 0.85em;
+}
+
+.copy p {
+	font-size: clamp(0.85rem, 1.02vw, 1.0625rem);
+	font-weight: 500;
+	line-height: 1.55;
+	letter-spacing: 0;
+	text-wrap: pretty;
+}
+
+.copy .lead {
+	font-size: clamp(1.05rem, 1.36vw, 1.3125rem);
+	font-weight: 700;
+	line-height: 1.34;
+	letter-spacing: -0.02em;
+}
+
+.copy em {
+	font-style: normal;
+	font-weight: 700;
+}
+
+/* Placeholder for the sentence that arrived truncated in the brief. */
+.todo {
+	color: var(--color-fg-muted);
+}
+
+.hint {
+	position: absolute;
+	right: var(--gutter);
+	bottom: var(--gutter);
+	font-family: var(--font-display);
+	font-weight: 700;
+	font-size: 11px;
+	letter-spacing: 0;
+	text-transform: uppercase;
+	color: var(--color-fg-muted);
+}
+
+/* Narrow screens: the glyph moves down and out of the copy's way (Scene.js),
+   so the column may take the full measure. */
+@media (max-width: 900px) {
+	/* The hint is absolutely positioned; on a phone the last line of copy
+	   reaches the bottom gutter and collides with it. Give it its own band. */
+	#page {
+		padding-bottom: calc(var(--gutter) + 1.5rem);
+	}
+
+	.copy {
+		max-width: 100%;
+	}
+
+	.copy p {
+		font-size: 0.875rem;
+	}
+
+	.copy .lead {
+		font-size: 1.0625rem;
+	}
+
+	.display {
+		max-width: 100%;
+	}
+}
+
+/* ------------------------------------------------------- links in the copy */
+
+/* Rasterized into the projection like everything else: the accent colour is
+   the affordance, the underline survives the small sizes the raster works at.
+   (index.html has no links; this rule is inert there.) */
+.copy a {
+	color: var(--color-accent);
+	text-decoration: underline;
+	text-underline-offset: 0.14em;
+	text-decoration-thickness: 0.07em;
+}
+
+/* ------------------------------------------------------------ the step menu */
+
+/* Three labels, one per step front. Position and opacity are driven per frame
+   from stepAnchors() in main-v2.js; here only the look. The nav itself never
+   captures the pointer — only the items do, and only once readable. */
+#step-menu {
+	position: fixed;
+	inset: 0;
+	pointer-events: none;
+	z-index: 10;
+}
+
+.step-menu__item {
+	position: absolute;
+	top: 0;
+	left: 0;
+	transform: translate(-50%, -50%);
+	border: 0;
+	background: none;
+	padding: 0.2em 0.5em;
+	font-family: var(--font-display);
+	font-weight: 700;
+	font-size: clamp(1.1rem, 2.6vw, 2.25rem);
+	letter-spacing: 0.02em;
+	text-transform: uppercase;
+	/* On the cobalt risers, the label is paper — same negative-space rule as
+	   the treads' white. */
+	color: var(--color-bg);
+	opacity: 0;
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.step-menu__item:hover,
+.step-menu__item:focus-visible {
+	text-decoration: underline;
+	text-underline-offset: 0.18em;
+	text-decoration-thickness: 0.06em;
+	outline: none;
+}
+
+/* ------------------------------------------------------------- the dive veil */
+
+#dive-veil {
+	position: fixed;
+	inset: 0;
+	opacity: 0;
+	pointer-events: none;
+	z-index: 20;
+}
