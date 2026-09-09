@@ -11,8 +11,10 @@ import { JOURNEY, journeyH, progressPastExit, rideRate } from "./Scene";
  * THE SEAM IS A DOOR, NOT A DISSOLVE. The bore of the glyph is a square prism
  * one unit across (TUNNEL in Scene.js) and it stops at a plane. This corridor
  * starts EXACTLY at that plane and carries straight on: same origin, same
- * axis, same square section, same ride line, built in the glyph's own world
- * frame. The two never share a cubic inch, so there is nothing to fade. The
+ * axis, same square section, and the same ride line — which is the axis itself,
+ * so the eye is concentric with both tubes from the parking spot to the far
+ * end. Built in the glyph's own world frame. The two volumes never share a
+ * cubic inch, so there is nothing to fade. The
  * visitor rolls through cobalt, crosses a door, and rolls on through paper —
  * the matter changes where the geometry changes, and the camera never stops.
  *
@@ -116,8 +118,6 @@ export const GALLERY = {
 	PLATEAU: progressPastExit(DOOR_OVER),
 };
 
-/** Fraction of the traverse the eye takes to leave the ride line, and to rejoin it. */
-const RECENTRE = 0.1;
 /** Fraction of the trip the corridor takes to reach its own cruise speed. */
 const RAMP = 0.1;
 /** Fraction of the trip over which the corridor opens out: the lattice goes. */
@@ -333,21 +333,18 @@ export default class Gallery {
 		// it and a raycast against this scene alone would not know.
 		this.live = veil <= 0;
 
-		// The eye leaves the ride line for the centre of the corridor (the
-		// Delphi framing) and comes back to it at the far end.
-		const rise =
-			frame.rideDrop *
-			smoothstep(clamp(travel / RECENTRE)) *
-			smoothstep(clamp((1 - travel) / RECENTRE));
-
-		// DERIVED FROM THE SEAM, never rebuilt from scratch: at travel = 0 and
-		// rise = 0 this reduces to the journey's own camera at the door, pose
-		// for pose — and travelOf gives it the journey's SPEED there too, so
-		// the handover shows up in neither position nor velocity.
+		// DERIVED FROM THE SEAM, never rebuilt from scratch: at travel = 0 this
+		// IS the journey's own camera at the door, pose for pose — and travelOf
+		// gives it the journey's SPEED there too, so the handover shows up in
+		// neither position nor velocity. Nothing lifts the eye any more: the
+		// ride line is the axis on both sides of the door (RIDE_DROP, Scene.js),
+		// so the camera is already in the middle of the square when it arrives
+		// and there is no height to adjust once inside. There used to be a
+		// recentring here over the first tenth of the trip, and it was the one
+		// move you could catch the corridor making.
 		this.camera.position
 			.copy(seam.position)
-			.addScaledVector(frame.axisDir, travel * LENGTH * frame.s)
-			.addScaledVector(frame.up, rise * frame.s);
+			.addScaledVector(frame.axisDir, travel * LENGTH * frame.s);
 		this.camera.quaternion.copy(seam.quaternion);
 		if (this.camera.fov !== seam.fov || this.camera.aspect !== seam.aspect) {
 			this.camera.fov = seam.fov;
@@ -411,13 +408,7 @@ export default class Gallery {
 		const zFrom = zDoor;
 		const zTo = zSeam + LENGTH + GRID.AHEAD;
 
-		this.frame = {
-			s,
-			axisDir: bore.axisDir,
-			rideDrop: bore.rideDrop,
-			up: new THREE.Vector3(0, 1, 0).applyQuaternion(bore.quaternion),
-			zSeam,
-		};
+		this.frame = { s, axisDir: bore.axisDir, zSeam };
 
 		this.root.position.copy(bore.origin);
 		this.root.quaternion.copy(bore.quaternion);

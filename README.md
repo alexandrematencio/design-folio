@@ -188,7 +188,9 @@ Le film : l'orbite s'incline vers l'axe du conduit (le logo épinglé — viser
 ailleurs fait glisser 18 % d'encre à l'écran, mesuré), la profondeur se
 déverse dans l'image pendant que la bouche approche (le morph EST le
 roulage), la traversée voit **la sortie en face, qui grandit** — c'est la
-perspective qui parle, plus aucun zoom —, puis à la sortie la grue monte
+perspective qui parle, plus aucun zoom, et l'œil est sur l'axe du conduit, donc
+ce carré est centré du parking jusqu'au couloir (voir « La porte » plus bas) —,
+puis à la sortie la grue monte
 au-dessus du solide dans l'air libre pendant que la perspective se draine
 (le dolly-zoom à la Hitchcock, joué sur la route avant le demi-tour), et le
 balayage du regard — azimut + élévation vers le regard VIVANT de l'orbite,
@@ -270,10 +272,38 @@ porte.
 
 Le conduit du logo s'arrête sur un plan de sortie. **Le couloir blanc commence
 exactement là** et continue tout droit : même origine, même axe, même section
-carrée, même ligne de roulage, construits dans le repère du glyph
-(`boreFrame()`). Les deux volumes ne partagent pas un pouce cube, donc il n'y a
-rien à fondre. On roule dans le cobalt, on franchit une porte, on roule dans le
-papier quadrillé — la matière change là où la géométrie change.
+carrée, même ligne de roulage — qui est l'axe lui-même —, construits dans le
+repère du glyph (`boreFrame()`). Les deux volumes ne partagent pas un pouce
+cube, donc il n'y a rien à fondre. On roule dans le cobalt, on franchit une
+porte, on roule dans le papier quadrillé — la matière change là où la géométrie
+change.
+
+**L'œil roule sur l'axe, et il y est déjà au parking.** Il tenait 0,15 en
+dessous, pour que le point de fuite passe au-dessus de la route comme au
+volant. Bon pour une route, faux pour celle-ci : le couloir est la même section
+carrée prolongée, donc un œil bas est un œil décentré dans un cadre dont le
+sujet EST un carré — et il faut bien qu'il remonte au milieu à un moment. Ce
+rattrapage prenait les premiers 10 % du couloir, et c'était le seul mouvement
+qu'on pouvait prendre le couloir à faire. `RIDE_DROP` vaut zéro ; `RECENTRE` et
+son terme `rise` n'existent plus.
+
+Ce qui se mesure, à P (progress 0,627455, h 0,633267) : l'écart entre la caméra
+du voyage et le point analytique `ride(traverseDepth(h))` vaut **0** unité monde
+(pas « petit » : zéro), et la distance de l'œil à l'axe du conduit vaut zéro
+aussi — à la porte comme sur tout le couloir, t = 0,001 à 0,999. Avant, c'était
+0,183 unité monde à la porte, encore 0,120 à t = 0,05 et 0,008 à t = 0,1 : la
+remontée était bien là où Alexandre l'a vue. Au pixel, sur la frame de porte
+p = 0,5915, les arêtes haute et basse du carré de sortie tombent toutes deux à
+**408,20 px** du centre du cadre (asymétrie 0,00 px) contre **530,65 et
+285,74 px** avant — 245 px d'écart, un quart de la hauteur de l'image. Dans le
+couloir à t = 0,02, les dix premières traverses du treillis relevées sur la
+colonne centrale sont à **0,0 px** de leurs jumelles d'en face, contre des
+écarts alternés jusqu'à 15,5 px avant.
+
+Tout ce qui en dérive a suivi sans une retouche : `PLATEAU` = 0,627455,
+`rideRate(P)` = 21,19 largeurs de conduit par unité de progress (14,3 par unité
+de h), `SEAM_SPEED` = 0,7358 — les mêmes qu'avant, la ligne de roulage n'ayant
+bougé que perpendiculairement à la route.
 
 C'est pour ça que **l'approche est rendue dans le z-buffer du logo**, avec sa
 caméra de rendu et sans effacer la profondeur (`Three.#render`, passe

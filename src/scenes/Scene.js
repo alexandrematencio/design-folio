@@ -331,7 +331,16 @@ export const JOURNEY = {
 	STITCH: 0.05, // of the leg: float-level slerp onto the live orbit gaze
 	FOV: 55, // deg — the eye, once the interlude is fully perspective
 	FOV_FLAT: 0.5, // deg — where perspective ≈ ortho and the swap is free
-	RIDE_DROP: 0.15, // ride line sits this far below the bore's centre line
+	// THE EYE RIDES ON THE AXIS. It used to sit 0.15 below it, so that the
+	// vanishing point rode above the road the way it does in a car. That was
+	// right for a road and wrong for THIS one: the corridor beyond the door is
+	// the same square section carried on, so an eye off the axis is an eye off
+	// centre in a frame whose whole subject is a square — and it has to come
+	// back to the middle at some point, which is a height adjustment the
+	// visitor sees. At zero the park, the mouth, the traverse, the door and the
+	// corridor are all CONCENTRIC, and there is nothing left to recentre.
+	// Kept named rather than folded away: it is a decision, not an accident.
+	RIDE_DROP: 0,
 	FRAME_MOUTH: 2.2, // frame height (x s) at the mouth, fully perspective
 	LOOK: 1.8, // gaze lead along the axis (x s); also the spiral's start radius
 	EXIT_OVER: 0.3, // how far past the exit plane the traverse rolls (x s)
@@ -1093,8 +1102,8 @@ export default class Scene {
 	 * arithmetic would drift the day either one is touched, and the door is
 	 * exactly where that drift would show as a step in the wall.
 	 *
-	 * Lengths come back in GLYPH-LOCAL units (bore, halfLength, rideDrop) with
-	 * `s` alongside; points come back in world.
+	 * Lengths come back in GLYPH-LOCAL units (bore, halfLength) with `s`
+	 * alongside; points come back in world.
 	 */
 	boreFrame() {
 		if (!this.glyph) return null;
@@ -1106,8 +1115,11 @@ export default class Scene {
 				TUNNEL.centre[1] + y,
 				TUNNEL.centre[2] + z,
 			).applyMatrix4(m);
-		// The ride line: the bore's axis, dropped a little below its centre
-		// so the vanishing point sits above the road — the driver's eye.
+		// The ride line IS the bore's axis (RIDE_DROP is zero — see there for
+		// why), so `mouth` and `origin` below are now the same point. They are
+		// both kept because they answer different questions: where the eye
+		// enters, and where the corridor hangs. That they coincide is the
+		// whole of this pass — one axis, from the parking spot to the far end.
 		const ride = (z) => local(0, -JOURNEY.RIDE_DROP, z);
 		return {
 			s,
@@ -1115,8 +1127,6 @@ export default class Scene {
 			ride,
 			axisDir: ride(1).sub(ride(0)).normalize(),
 			mouth: ride(-TUNNEL.halfLength),
-			// The mouth's CENTRE, not the ride line's: a tunnel built on this
-			// is concentric with the bore, and only the eye rides low in it.
 			origin: local(0, 0, -TUNNEL.halfLength),
 			// Read off the matrix rather than assumed. The glyph carries no
 			// rotation today; the day it does, the gallery follows for free.
@@ -1125,7 +1135,6 @@ export default class Scene {
 			),
 			bore: TUNNEL.bore,
 			halfLength: TUNNEL.halfLength,
-			rideDrop: JOURNEY.RIDE_DROP,
 		};
 	}
 
