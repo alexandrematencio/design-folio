@@ -952,6 +952,52 @@ export default class Scene {
 	/* ----------------------------------------------------------- the tunnel */
 
 	/**
+	 * THE BORE, IN WORLD SPACE — the one place that maths is written.
+	 *
+	 * #applyJourney built these lambdas inline; the gallery (scenes/Gallery.js)
+	 * needs the very same frame, because its whole trick is that its white
+	 * tunnel IS the bore: same origin, same axis, same square section, same
+	 * ride line. Two copies of this arithmetic would drift the day either one
+	 * is touched, and the seam of the crossfade is where that drift would show.
+	 *
+	 * Lengths come back in GLYPH-LOCAL units (bore, halfLength, rideDrop) with
+	 * `s` alongside; points come back in world.
+	 */
+	boreFrame() {
+		if (!this.glyph) return null;
+		const s = this.glyph.scale.x;
+		const m = this.glyph.matrixWorld;
+		const local = (x, y, z) =>
+			new THREE.Vector3(
+				TUNNEL.centre[0] + x,
+				TUNNEL.centre[1] + y,
+				TUNNEL.centre[2] + z,
+			).applyMatrix4(m);
+		// The ride line: the bore's axis, dropped a little below its centre
+		// so the vanishing point sits above the road — the driver's eye.
+		const ride = (z) => local(0, -JOURNEY.RIDE_DROP, z);
+		return {
+			s,
+			local,
+			ride,
+			axisDir: ride(1).sub(ride(0)).normalize(),
+			mouth: ride(-TUNNEL.halfLength),
+			// The mouth's CENTRE, not the ride line's: a tunnel built on this
+			// is concentric with the bore, and only the eye rides low in it.
+			origin: local(0, 0, -TUNNEL.halfLength),
+			// Read off the matrix rather than assumed. The glyph carries no
+			// rotation today; the day it does, the gallery follows for free.
+			quaternion: new THREE.Quaternion().setFromRotationMatrix(
+				new THREE.Matrix4().extractRotation(m),
+			),
+			bore: TUNNEL.bore,
+			halfLength: TUNNEL.halfLength,
+			rideDrop: JOURNEY.RIDE_DROP,
+			camera: this.perspCamera,
+		};
+	}
+
+	/**
 	 * The leg through the hole. See the JOURNEY comment for the shape.
 	 * Overrides the orbit pose already applied this frame; at either edge it
 	 * IS the orbit pose — position, gaze, zoom, and their velocities — so
@@ -963,14 +1009,7 @@ export default class Scene {
 		const h = (progress - JOURNEY.FROM) / span;
 		if (h <= 0 || h >= 1) return;
 
-		const s = this.glyph.scale.x;
-		const m = this.glyph.matrixWorld;
-		const local = (x, y, z) =>
-			new THREE.Vector3(
-				TUNNEL.centre[0] + x,
-				TUNNEL.centre[1] + y,
-				TUNNEL.centre[2] + z,
-			).applyMatrix4(m);
+		const { s, ride, axisDir, mouth } = this.boreFrame();
 		const win = (v, [a, b]) => smoothstep(clamp((v - a) / (b - a)));
 		const bez = (p0, p1, p2, p3, u) => {
 			const v = 1 - u;
@@ -981,11 +1020,6 @@ export default class Scene {
 				.addScaledVector(p3, u * u * u);
 		};
 
-		// The ride line: the bore's axis, dropped a little below its centre
-		// so the vanishing point sits above the road — the driver's eye.
-		const ride = (z) => local(0, -JOURNEY.RIDE_DROP, z);
-		const axisDir = ride(1).sub(ride(0)).normalize();
-		const mouth = ride(-TUNNEL.halfLength);
 		const axisEnd = ride(TUNNEL.halfLength + JOURNEY.EXIT_OVER);
 		const ahead = (at) =>
 			at.clone().addScaledVector(axisDir, JOURNEY.LOOK * s);

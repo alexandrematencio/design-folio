@@ -2,6 +2,7 @@ import * as THREE from "three";
 import Lenis from "lenis";
 import WebGLContext from "./WebGLContext";
 import Scene from "../scenes/Scene";
+import Gallery from "../scenes/Gallery";
 
 /**
  * THE GALLERY PLATEAU (v2 only).
@@ -81,12 +82,19 @@ class Three {
 		// still get a frame. Without it every hand-set value is overwritten by
 		// the next tick before the screenshot lands.
 		this.paused = false;
+
+		// The second scene, on v2 only. It owns its own camera and is drawn in
+		// a second pass; see #render.
+		this.galleryView = null;
 	}
 
 	run() {
 		this.context = new WebGLContext(this.container);
 		this.context.init();
 		this.scene = new Scene(this.options);
+		if (this.options.journey) {
+			this.galleryView = new Gallery(this.scene, this.context);
+		}
 		this.#setupLenis();
 
 		// Dev-only handle. tools/shoot.mjs drives the loop from here to take
@@ -118,7 +126,12 @@ class Three {
 		this.lenis?.raf(time);
 		this.#maybeSnap();
 		if (!this.paused) {
-			this.scene.animate(delta, elapsed, this.#getLoopProgress());
+			const progress = this.#getLoopProgress();
+			this.scene.animate(delta, elapsed, progress);
+			// AFTER the scene: the gallery's camera is derived from the
+			// journey's, which this very frame has just posed.
+			if (progress > 0.3) this.galleryView?.arm();
+			this.galleryView?.update(this.gallery, delta, elapsed);
 		}
 		this.#render();
 
@@ -227,14 +240,42 @@ class Three {
 		return limit * (a + Math.min(1, Math.max(0, t)) * g);
 	}
 
+	/**
+	 * ONE renderer, up to two passes. The logo's scene first, then the gallery
+	 * over it with the colour buffer kept and the DEPTH buffer thrown away —
+	 * the two tunnels are the same geometry in the same world, so without that
+	 * clear they z-fight instead of dissolving.
+	 *
+	 * Past a full fade the logo pass is skipped outright. That is not only
+	 * tidiness: it is a VSM shadow map, a projection and a room that nobody can
+	 * see, and the plateau is 750vh long.
+	 */
 	#render() {
-		if (!this.context.renderer) return;
-		// renderCamera is which eye draws THIS frame: the ortho camera, or —
-		// only inside the journey's perspective interlude — the tunnel's eye.
-		this.context.renderer.render(
-			this.scene.scene,
-			this.scene.renderCamera ?? this.scene.camera,
-		);
+		const renderer = this.context.renderer;
+		if (!renderer) return;
+		const view = this.galleryView;
+		const fade = view?.fade ?? 0;
+
+		if (fade < 1) {
+			// renderCamera is which eye draws THIS frame: the ortho camera, or
+			// — only inside the journey's perspective interlude — the tunnel's.
+			renderer.autoClear = true;
+			renderer.render(
+				this.scene.scene,
+				this.scene.renderCamera ?? this.scene.camera,
+			);
+		}
+		if (fade <= 0) return;
+
+		if (fade >= 1) {
+			renderer.setClearColor(view.clearColour, 1);
+			renderer.autoClear = true;
+		} else {
+			renderer.autoClear = false;
+			renderer.clearDepth();
+		}
+		renderer.render(view.scene, view.camera);
+		renderer.autoClear = true;
 	}
 
 	/**
@@ -247,6 +288,7 @@ class Three {
 			const { width, height } = this.context.getFullScreenDimensions();
 			this.context.onResize(width, height);
 			this.scene.onResize(width, height);
+			this.galleryView?.onResize();
 			this.lenis?.resize();
 		}, 120);
 	}
