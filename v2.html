@@ -20,18 +20,19 @@
 			800vh): the tunnel journey wants a chauffeur's pace, and the only
 			honest way to slow a scroll-driven film is more road.
 
-			1825 = 1200 + 625: the extra 625vh is the GALLERY PLATEAU, the
+			1792 = 1200 + 592: the extra 592vh is the GALLERY PLATEAU, the
 			stretch where the orbit stands still and the Selected Works run
 			past inside the bore. It is not a taste value — it is the wheel the
-			corridor's 18 bore widths need to run at the SAME speed the conduit
+			corridor's 17 bore widths need to run at the SAME speed the conduit
 			crosses the door at (GALLERY in scenes/Gallery.js does the sum, and
 			warns in dev if the two ever drift apart). It was 750, and the
-			corridor was then a fifth slower than the road it continues.
+			corridor was then a fifth slower than the road it continues; then
+			625 while the corridor still had a six-cell tail.
 
 			The two numbers live together in GALLERY — change one here and the
 			map breaks.
 		-->
-		<div id="scroll-spacer" style="height: 1825vh" aria-hidden="true"></div>
+		<div id="scroll-spacer" style="height: 1792vh" aria-hidden="true"></div>
 
 		<!--
 			The menu: one item per step, written on the step fronts. Empty and
@@ -58,6 +59,17 @@
 			over the end of the dive.
 		-->
 		<div id="dive-veil" aria-hidden="true"></div>
+
+		<!--
+			The scroll cue: the same fixed, bottom-centred, floating outline
+			icon amatencio-photo's hero shows under its splash (lucide, 26px,
+			1.5 stroke, ink) — drawn here as a mouse. It lives OUTSIDE the
+			projected page on purpose: the page is a still, and this has to
+			breathe. main-v2.js fills it and shows it only on a cold arrival at
+			the rest frame, until the first scroll. It replaced the
+			"Scroll — it isn't flat" caption that used to sit in the page.
+		-->
+		<div id="scroll-cue" aria-hidden="true"></div>
 
 		<!--
 			Offscreen DOM source — this is what gets rasterized and projected.
@@ -110,7 +122,6 @@
 					</div>
 				</div>
 
-				<p class="hint" aria-hidden="true">Scroll — it isn&rsquo;t flat</p>
 			</article>
 		</div>
 

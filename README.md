@@ -77,7 +77,7 @@ distance au repos. Deux poses sur ce cercle portent tout le poids :
 | `0.125` | **marches** — azimut 90°, élévation 12° | les trois contremarches pile de face, empilées, séparées par les marches en blanc. C'est la vue du menu |
 | `0.625` | **arrière** | le solide vu de dos |
 | `0.2 → 0.875` | **la traversée** (v2) | juste après le menu, la ligne quitte l'orbite et passe dans le trou du solide — voir « La traversée du trou » |
-| `0.63388` | **la porte** (v2) | le progress s'arrête là pendant 625vh : la caméra vient de franchir le plan de sortie et le couloir des Selected Works prend la route — voir « La porte, et le couloir » |
+| `0.63388` | **la porte** (v2) | le progress s'arrête là pendant 592vh : la caméra vient de franchir le plan de sortie et le couloir des Selected Works prend la route — voir « La porte, et le couloir » |
 
 Ce sont des conséquences de la géométrie, pas des choix : les trois
 contremarches du solide regardent toutes +X (mesuré : x = 0, +1, +2 aux hauteurs
@@ -215,7 +215,7 @@ seconde différence — voir « L'amortissement » plus bas.
 
 Et parce que la seule façon honnête de ralentir un film piloté au scroll est
 d'allonger la route, **v2 roule sur 1200vh** de voyage (contre 800 pour v1),
-plus 625vh de plateau pour la galerie — 1825 en tout, inline dans v2.html.
+plus 592vh de plateau pour la galerie — 1792 en tout, inline dans v2.html.
 Le repos aimante toujours légèrement (`#maybeSnap`, v2 seulement), et tout
 reste une fonction pure du scroll : marche arrière gratuite.
 
@@ -416,28 +416,94 @@ le pacing de `TRAVERSE` par dichotomie et rend `0.63388` (h = 0.64279), qui est
 exactement le genou où la traversée arrête de rouler à plat et commence à
 freiner. Et le couloir ne « rattrape » plus rien : le conduit tient sa croisière
 jusque dans l'embrasure, et `GALLERY.VH` est résolu pour que le couloir tienne
-la même — 18 largeurs de conduit à 34,43 largeurs par unité de progress font
-`1200 × 18 / 34,43` = 627,3vh, arrondis à **625**. `SEAM_SPEED` vaut 0,9963 :
-0,4 % d'écart, quatre fois moins qu'un pas de la jauge de flux. Il n'y a donc
+la même — 17 largeurs de conduit à 34,43 largeurs par unité de progress font
+`1200 × 17 / 34,43` = 592,5vh, arrondis à **592**. `SEAM_SPEED` vaut 0,9992 :
+0,1 % d'écart, loin sous un pas de la jauge de flux. Il n'y a donc
 plus de rampe du tout, `travelOf` a disparu et le trajet vaut `travel = t`. Ni
 la position ni la vitesse ne trahissent le changement de scène, aux deux
 coutures.
 
-La sortie est **blanche sur blanche** : sur les derniers 10 % du trajet le
-treillis s'éteint et il ne reste que du papier ; sur les derniers 6 % du
-plateau la scène du logo est rendue dessous (caméra à la porte, face au
-cyclorama) pendant que l'opacité du papier tombe à zéro. Rien ne bouge à
+La sortie est **blanche sur blanche** : sur la dernière largeur de conduit le
+treillis s'éteint et il ne reste que du papier ; sur les trois derniers quarts
+de largeur la scène du logo est rendue dessous (caméra à la porte, face au
+cyclorama) pendant que l'opacité du papier tombe à zéro. Ces deux mesures sont
+en largeurs de conduit, plus en fractions du trajet — voir « Le fond du tunnel
+se voit depuis l'entrée » plus bas pour ce que ça a changé. Rien ne bouge à
 l'écran, donc l'arrêt de la caméra pendant ce fondu ne se voit pas. En marche
 arrière, le papier se lève, le treillis se rallume, on repasse la porte à
 reculons dans le cobalt.
 
 La jauge suit : `tools/flow.mjs` échantillonnait le progress, or le plateau est
-625vh où le progress ne bouge pas — depuis que le couloir est visible pendant
+592vh où le progress ne bouge pas — depuis que le couloir est visible pendant
 l'approche, ça mettait côte à côte deux images séparées par tout le plateau et appelait
 ça un pas (9× la croisière mesurés, pour une coupe qui n'existe pas). La jauge
 parcourt maintenant le plateau sur son propre axe, avec le nombre de pas qui
-fait **la même molette par pas** sur les deux axes : 209 pas, médiane 6,55,
-pic 3,69× la croisière du voyage.
+fait **la même molette par pas** sur les deux axes : 198 pas, médiane 6,93,
+pic 3,52× la croisière du voyage.
+
+### Le fond du tunnel se voit depuis l'entrée, et la sortie suit la dernière photo (2026-09-09)
+
+Deux plaintes sur une capture d'écran prise à progress 0,44 — le solide de
+face, la bouche du conduit ouverte, et **rien dedans** : un carré de papier.
+Un visiteur qui roule vers un trou doit savoir qu'il mène quelque part, sinon
+la curiosité meurt avant la porte.
+
+**Le brouillard était accroché à l'œil.** Le brouillard de three est une
+distance à la caméra, et pendant l'approche la caméra est encore à quatre à
+huit largeurs de conduit de la porte : mesuré de là, tout le couloir était
+au-delà de `FOG[1]` et le rectangle de sortie restait une feuille de papier
+depuis le parking jusqu'à mi-conduit (progress 0,55). Le couloir était bien
+dessiné dans le z-buffer du logo depuis la fin de la première passe — mais
+noyé. La bande de brouillard glisse maintenant de la distance œil-porte
+(`#fogFrom` dans Gallery.js) : le couloir s'embrume **comme vu depuis la
+porte**, le treillis et les premiers rangs apparaissent au fond du tube de
+cobalt dès que la perspective s'ouvre, et le glissement s'annule pile à la
+porte, où la bande redevient celle du plateau. Mêmes nombres, donc aucune
+couture, dans les deux sens.
+
+**Deux écrans de rien après la dernière photo.** Mesuré sur les frames : la
+dernière photo quittait le cadre vers t = 0,87 du plateau, puis 81vh de
+treillis vide et de voile, puis encore ~100vh de ciel gris (progress 0,634 →
+0,72) avant que l'escalier entre dans le cadre. Trois causes, trois réglages :
+
+| Avant | Après | Où |
+|---|---|---|
+| `TAIL` 6 cellules (1,5 largeur après le dernier rang) | 2 cellules | Gallery.js |
+| `OPEN` / `VEIL` en fractions du trajet (10 % / 6 %) | 1 largeur / 0,75 largeur, convertis une fois | Gallery.js |
+| couloir 18 largeurs → plateau 625vh | 17 largeurs → **592vh**, re-résolu | Gallery.js, v2.html |
+| balayage de sortie en fenêtre smootherstep plate | chargé sur sa partie vide : `SWEEP_EMPTY` 0,37 du virage en `SWEEP_EMPTY_OVER` 0,2 de la fenêtre | Scene.js |
+
+Le balayage regardait le vide pendant son premier tiers (l'œil sort du conduit
+face au cyclorama ; l'escalier n'entre qu'à wS ≈ 0,37), et le pire était que
+le transit de l'escalier tombait à u = 0,5, le **pic** de la smootherstep
+(1,875× sa moyenne). Le virage est maintenant deux pièces : une quintique
+sur la partie vide, à pente ET courbure nulles au départ (une cubique
+seulement plate au départ faisait un à-coup de 10,3 à la couture, deuxième
+pire endroit du trajet — mesuré, puis corrigé), raccordée C2 à une Hermite
+cubique sur l'escalier, plate à l'arrivée comme avant. Résultat à la jauge :
+transit de l'escalier **15,3 → 9,8**, partie vide 1,3 → 9,8 (budget 25),
+pire à-coup du balayage 6,6 (1,6× cruise, sous celui de la porte à 11,6 qui
+préexistait). `PASS` sur toute la boucle, contrôle du repos inchangé.
+
+Ce que le visiteur voit : dernière photo hors cadre vers t = 0,92 (41vh de
+couloir nu au lieu de 81), frein 14vh, et l'escalier revient à progress 0,67
+au lieu de 0,72 — environ 100vh entre la dernière photo et le retour du
+solide, contre 185 avant.
+
+**Deux repères, même librairie.** La flèche de sortie est le `ArrowUp` de
+lucide, encre `#0A0A0A`, imprimée à plat sur le sol deux cellules après le
+dernier rang (le sol y est libre : le dernier rang est au plafond et sur la
+paroi +x), avec la base d'une photo de sol — son « haut » est +z, donc elle
+pointe vers la porte. Texture SVG → data URL rasterisée à 256 px, gardée
+entre deux rebuilds ; elle survit à l'extinction du treillis et part avec le
+papier sous le voile. Et au frame 0, à froid, la souris outline de lucide
+(`Mouse`, 26 px, trait 1,5, même flottement 2,4 s que la cue de la hero
+d'amatencio-photo — qui, elle, est un `ChevronDown`) remplace la légende
+« Scroll — it isn't flat » : hors de la page projetée, en DOM fixe, visible
+seulement pour une arrivée à froid au repos, retirée au premier scroll et
+jamais pour un retour de plongée ni sous un outil. `src/utils/icon.js`
+sérialise un nœud lucide en SVG pour les deux usages ; `lucide` (vanilla) est
+la seule dépendance ajoutée. index.html (v1, gelé) garde sa légende.
 
 ### Le texte suit sa visibilité (v2)
 
@@ -585,6 +651,63 @@ le coin. Aucune pièce physiquement cohérente ne rend le coin pâle ET les avan
 cobalt — le dessin le fait quand même. Donc le sol ne se montre que dans les
 faces que le bake déclare scellées du ciel (`aWell`). **La mesure choisit les
 faces ; la lumière, elle, est celle de la pièce.**
+
+### Le studio a des sources, pas un dégradé (2026-09-09)
+
+Le rig précédent était un dégradé lisse de l'horizon (0,12) au zénith (42),
+réfléchi par un vernis quasi miroir (roughness 0,09, coat 0,55 / 0,035) sans
+aucun roll-off des hautes lumières. C'est la recette exacte de la « boule
+chromée » : au repos ça marchait par construction, mais à 3 % de scroll le
+solide restait un autocollant (marches blanc pur, contremarches cobalt plat),
+et dans le tunnel chaque paroi en incidence rasante étalait le dégradé du
+cobalt au lavande puis au blanc. Alexandre : « un gloss dégueulasse et cheap ».
+
+Un vrai studio est **sombre partout et brillant en quelques rectangles**, et
+c'est ces bords qu'un laque montre. `createStudioEnvironment` accepte donc des
+`panels` (azimut, élévation, demi-largeur, demi-hauteur, pénombre, radiance)
+posés en MAX sur un fond bas (ciel 3 au zénith, horizon 0,1, sol 0,03). Trois
+sources, toutes placées par la géométrie :
+
+| Source | Où | Pourquoi là |
+|---|---|---|
+| **Key** softbox, radiance 40, plateau ±4,5° × ±9°, pénombre 3,5° | az 225°, él 35,26° | le miroir d'une marche sous la caméra de repos : `(1,1,1)` réfléchi par `+Y` donne `(−1,1,−1)` |
+| **Strip** bas, radiance 30, ±12° × ±5° | az 180°, él 12° | le miroir d'une marche à la pose du menu (œil sur +X à 12°) : les trois bandes gardent leurs filets clairs |
+| **Carte de sol**, radiance 6, ±18° × ±14° | az −45°, él −35,26° | le miroir d'une contremarche au repos ; seules les faces `aWell` la voient — c'est le coin pâle |
+
+**La largeur de la key est le budget de scroll.** Le miroir d'une marche
+tourne d'un degré d'azimut par degré d'orbite ; un plateau de 4,5° plus 3,5° de
+pénombre, flouté par la roughness de base, donne mesuré : blanc pur jusqu'à
+0,015, `(247,248,255)` à 0,02, `(212,214,255)` à 0,025, `(188,190,255)` à 0,03,
+`(136,139,255)` à 0,05 — puis les marches retrouvent le strip et reblanchissent
+pour le menu à 0,125. Le bleu réapparaît sous le blanc entre 2 et 3 % de la
+boucle, ce qui était la demande.
+
+**La matière est un laque à deux lobes**, pas un miroir : base roughness 0,28
+(le bord de la softbox se fond sur quelques degrés d'orbite au lieu de
+basculer), clearcoat 0,7 à 0,06 (le bord net reste dessus). Réglé dans
+`SHADING["one-material"].surface` de `Scene.js`, par-dessus les valeurs du
+`.glb` — le master Blender n'est pas touché, et `brand/3d/README.md` décrit
+toujours ses propres molettes (0,09 / 0,55).
+
+**Le glyph porte son propre épaulement** (`knee` dans `GlyphMaterial.js`,
+0,9) : le renderer reste en `NoToneMapping` pour la page projetée, mais la
+sur-exposition du glyph se replie dans les derniers dix pour cent au lieu de
+couper net. Par canal, volontairement : une courbe qui préserve la teinte
+garderait une marche saturée bleu pâle pour toujours, et le blanc du logo EST
+cette désaturation. Coût : un cobalt à exactement 1,0 sort à 251 au lieu de
+255 — la peau plate garantit le repos, pas la peau éclairée.
+
+Deux conséquences à connaître. Le studio n'étant plus une lampe, les
+contremarches ont perdu ~0,4 d'irradiance diffuse : `envDiffuse` monte de
+0,05 à 0,45 pour les ramener sur l'encre (mesuré au repos éclairé :
+`(0,19,247)` pour `#0013FF`). Et le fondu plat → éclairé n'a plus besoin de
+durer : la peau éclairée retombe d'elle-même sur les trois valeurs du logo,
+donc `orbit.lit` de v2 finit à progress 0,012, avant que le bord de la key
+n'arrive — `ORBIT.LIT` de `utils.js` reste celui de v1, qui est figé.
+
+Le tunnel, lui, est devenu ce qu'il est physiquement : un couloir de laque
+bleu sombre éclairé par ses deux bouts, `(29,31,129)` à mi-course, avec un
+reflet de ciel doux au sommet de la face d'entrée. Plus de bande lavande.
 
 ---
 
@@ -800,6 +923,27 @@ beaucoup moins à sa tête ; c'est ce dégradé qui fait la photo. Par sommet, d
 — sauf le sélecteur du coin creux, qui doit rester plat, parce que par sommet
 ses coins du bas voyaient par-dessus le surplomb (0,25 contre 0,06 en haut) et
 le coin sortait à moitié cobalt, avec la couture en diagonale.
+
+**Un dégradé n'est pas un studio.** Une surface réfléchissante ne montre
+que les BORDS de ce qu'elle réfléchit. Un environnement qui n'est qu'un
+dégradé lisse n'a aucun bord : la réflexion est un voile continu, identique
+sous tous les angles à un décalage près, et c'est ce que l'œil lit comme
+« plastique cheap ». Le blanc des marches ne prouvait rien, il tenait à une
+radiance de 42 qui saturait tout. Dès qu'une caméra en perspective a regardé
+le solide de près (le tunnel), le voile s'est vu. Des rectangles lumineux sur
+un fond sombre, et un épaulement sur les hautes lumières — voir « Le studio a
+des sources » plus haut.
+
+**Un brouillard accroché à l'œil cache ce qu'il y a au bout du couloir.** Le
+brouillard de three se mesure depuis la caméra ; tant que l'œil est loin de la
+porte, tout ce qu'il y a derrière est au-delà de `far` et l'ouverture est une
+feuille blanche. Le couloir était rendu, correct, et invisible. Décaler la
+bande de la distance œil-porte le rend visible sans toucher au plateau.
+
+**Une pause de deux écrans n'est pas une respiration.** Après la dernière
+photo, la queue du couloir, le voile et le premier tiers du balayage faisaient
+185vh de rien. Chaque morceau avait une raison locale ; c'est la somme qui
+n'en avait pas. Mesurer le rien bout à bout, en vh, avant de juger un pacing.
 
 **Une shadow map floue fuit sous les surplombs.** La key light déposait +17 de
 bleu sur le coin creux, à travers le flou VSM (`radius 5`) — mesuré en coupant

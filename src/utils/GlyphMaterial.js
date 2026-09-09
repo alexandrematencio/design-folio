@@ -74,6 +74,15 @@ export function patchGlyphMaterial(
 		// DIFFUSE half of "le blanc éclaire par le dessous"; the specular half
 		// is the floor's mirror image, gated below.
 		groundBounce = 0,
+		// Where the highlight roll-off begins, in linear light. The renderer
+		// runs NoToneMapping so that the projected page stays byte-exact, so
+		// the glyph carries its own shoulder: below the knee nothing moves
+		// (cobalt's blue channel at 1.0 lands within a step of #0013FF),
+		// above it the overshoot is folded into the last few per cent instead
+		// of clipping at a hard edge. A softbox reflection then ends the way
+		// film ends it — a roll into white — rather than as a cut-out. 1
+		// disables it (pure clip).
+		knee = 1,
 	},
 ) {
 	const wells = bounce !== null;
@@ -83,6 +92,8 @@ export function patchGlyphMaterial(
 		uFlatPaper: { value: new THREE.Color(paper) },
 		uFlatCobalt: { value: new THREE.Color(cobalt) },
 	};
+
+	uniforms.uKnee = { value: knee };
 
 	if (wells) {
 		Object.assign(uniforms, {
@@ -130,9 +141,21 @@ export function patchGlyphMaterial(
 			"#include <common>",
 			`#include <common>
 			uniform float uLitness;
+			uniform float uKnee;
 			uniform vec3 uFlatPaper;
 			uniform vec3 uFlatCobalt;
 			varying vec3 vGlyphObjectNormal;
+			// Per channel: identity up to the knee, then an exponential
+			// shoulder that approaches 1 and never crosses it. Per channel
+			// ON PURPOSE — a hue-preserving curve would keep a blown tread
+			// pale blue forever, and the logo's white IS the desaturation.
+			vec3 glyphShoulder( vec3 c ) {
+				float k = uKnee;
+				if ( k >= 1.0 ) return c;
+				vec3 over = max( c - k, 0.0 );
+				vec3 shoulder = k + ( 1.0 - k ) * ( 1.0 - exp( - over / ( 1.0 - k ) ) );
+				return mix( c, shoulder, step( k, c ) );
+			}
 			${
 				wells
 					? `uniform vec3 uFlatBounce;
@@ -226,7 +249,7 @@ export function patchGlyphMaterial(
 			// the logo's native size, and it keeps the edges crisp.
 			float _isTread = step( 0.5, abs( normalize( vGlyphObjectNormal ).y ) );
 			vec3 _flat = mix( uFlatCobalt, uFlatPaper, _isTread );
-			vec3 _lit = gl_FragColor.rgb;
+			vec3 _lit = glyphShoulder( gl_FragColor.rgb );
 			${
 				wells
 					? `_flat = mix( _flat, uFlatBounce, vWell );`

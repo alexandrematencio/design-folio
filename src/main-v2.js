@@ -1,6 +1,8 @@
 import "./style.css";
 import Three from "./core/Three";
 import { ORBIT } from "./utils/utils";
+import { Mouse } from "lucide";
+import { iconSvg } from "./utils/icon";
 
 /**
  * v2 — the same page, drawn with the rule Alexandre actually uses.
@@ -99,6 +101,24 @@ document.addEventListener("DOMContentLoaded", () => {
 	const veil = document.querySelector("#dive-veil");
 	const items = [...document.querySelectorAll(".step-menu__item")];
 	let navigatedTo = null;
+
+	/**
+	 * THE SCROLL CUE — the hero cue of amatencio-photo, as a mouse. Shown to a
+	 * visitor who lands cold on the rest frame, and only to them: a return
+	 * from a dive or a photograph arrives elsewhere and is driven by an
+	 * override, and a tool (shoot, flow) drives the page with no visitor at
+	 * all. The first scroll retires it for the session — the loop passes
+	 * through rest every lap, and a cue that came back each time would be a
+	 * nag, not a hint.
+	 */
+	const cue = document.querySelector("#scroll-cue");
+	cue.innerHTML = iconSvg(Mouse, {
+		width: 26,
+		height: 26,
+		"stroke-width": 1.5,
+		class: "scroll-cue",
+	});
+	let cueSpent = false;
 
 	/** Runs `fn` once the browser has actually painted the state set just now. */
 	const afterFrame = (fn) =>
@@ -292,6 +312,15 @@ document.addEventListener("DOMContentLoaded", () => {
 	const tick = () => {
 		const { facing, steps } = three.scene.stepAnchors();
 		const dive = three.scene.dive;
+
+		// Rest is progress 0 exactly (the snap lands there); the loop's other
+		// end counts too, one frame before the wrap.
+		const driven =
+			three.progressOverride !== null || three.galleryOverride !== null;
+		const p = three.scene.progress;
+		const atRest = p < 0.002 || p > 0.998;
+		if (driven || !atRest) cueSpent = true;
+		cue.classList.toggle("is-visible", !cueSpent && atRest);
 		const menuOpacity = facing * (dive ? Math.max(0, 1 - dive.t * 3) : 1);
 
 		for (const [i, step] of steps.entries()) {

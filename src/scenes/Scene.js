@@ -80,12 +80,69 @@ const SHADING = {
 		// lavender. The horizon stays dim for the same reason it always was:
 		// any sheen there lies flat across a whole riser and reads as grey
 		// veil, not as polish.
-		env: { horizon: 0.12, floor: 10 },
+		env: {
+			width: 1024,
+			height: 512,
+			// The room itself is DIM: a low sky that only reaches a few units
+			// at the zenith, a near-black floor. Nothing here is bright
+			// enough to blow a tread to white, so nothing here can wash a
+			// grazing wall in the tunnel either — that was the gradient at
+			// 42 mirrored in a chrome-like coat, and it is gone.
+			ceiling: 3,
+			horizon: 0.1,
+			floor: 0.03,
+			// Three sources, and each is placed by the geometry, not by eye.
+			// The camera at rest looks down (1,1,1); a tread (normal +Y)
+			// mirrors it into (-1,1,-1): elevation 35.26, azimuth 225. A
+			// riser (normal +X) mirrors it into (1,-1,-1): elevation -35.26,
+			// azimuth -45. At the menu pose the eye sits on +X at 12 degrees
+			// and a tread mirrors it to azimuth 180, elevation 12.
+			panels: [
+				// KEY — the softbox the treads blow out in at rest. Its
+				// width is the scroll budget: the mirror of a tread turns
+				// one degree of azimuth per degree of orbit, so a 6-degree
+				// plateau plus 3 of penumbra is fully white to progress
+				// ~0.017 and off the box by ~0.025. That is the "2-3 %"
+				// where blue must show under the white.
+				{ azimuth: 225, elevation: 35.26, halfWidth: 4.5, halfHeight: 9, soft: 3.5, radiance: 40 },
+				// STRIP — low and long, opposite the menu's eye. The treads
+				// find it again as they turn into the steps pose, so the
+				// three bands of the menu keep their light rules between
+				// them; on the way there, between key and strip, the treads
+				// are blue in a dim sky. That passage IS the reflection
+				// moving.
+				{ azimuth: 180, elevation: 12, halfWidth: 12, halfHeight: 5, soft: 4, radiance: 30 },
+				// FLOOR CARD — the white bounce under the overhang, in the
+				// riser mirror at rest. Only the faces the bake seals off
+				// from the sky may show it (aWell in GlyphMaterial.js); it
+				// is what the pale wedge is a reflection of. A CARD and not
+				// a whole bright floor: inside the bore every wall mirrors
+				// downward at some angle, and a floor at 10 everywhere put a
+				// white smear on all of them.
+				{ azimuth: -45, elevation: -35.26, halfWidth: 18, halfHeight: 14, soft: 8, radiance: 6 },
+			],
+		},
+		// The lacquer. The .glb ships roughness 0.09 / clearcoat 0.55 /
+		// coat roughness 0.035 — one hard mirror lobe, which is exactly the
+		// cheap-gloss look in a scene with nothing structured to reflect. A
+		// deep lacquer is two lobes: a base with SOME roughness, so the
+		// softbox edge blurs across a few degrees of orbit and the white
+		// leaves the treads as a fade rather than a switch, under a thin,
+		// sharp clearcoat that keeps the crisp edge on top. Car paint, not
+		// plastic.
+		surface: { roughness: 0.28, clearcoat: 0.7, clearcoatRoughness: 0.06, ior: 1.5 },
+		// The crossfade from the flat skin can be short now: the LIT render
+		// at rest lands on the same three values (white treads in the key,
+		// cobalt risers, the wedge in the card), so the fade is invisible
+		// and what the visitor sees move afterwards is the studio, not a
+		// mix. Done by progress 0.012, before the key's edge arrives.
+		orbit: { lit: { dead: 0.004, ramp: 0.02 } },
 		glyph: {
 			bounce: BOUNCE,
+			knee: 0.9,
 			// The ceiling as a lamp, gated per vertex by the baked sky
 			// visibility: the risers keep it, the pocket never sees it.
-			envDiffuse: 0.05,
+			envDiffuse: 0.45,
 			// The diffuse half of the white floor, per vertex via aGroundVis.
 			// The specular half is the floor's mirror image in the shader.
 			groundBounce: 0.3,
@@ -291,15 +348,31 @@ export const JOURNEY = {
 	// the in-bore speed budget at ~0.1 world unit per step, and the ride is
 	// six units long. Every narrower cut flashed the walls at 5-8x cruise.
 	TRAVERSE: [0.44, 0.66], // through the bore, the exit growing dead ahead
-	// UNIFORM pacing on the exit, and that is a measured lesson: the stair
-	// transits the frame EARLY in this sweep (at close range it is huge — it
-	// arrives a quarter turn in, not at the end), so a fast-early ease
-	// slammed it through at 21x cruise. Uniform, over a window this wide,
-	// the transit rides just under cruise x3 and the white beat after the
-	// exit stays a breath (~4 % of the loop).
+	// The stair transits the frame EARLY in this sweep (at close range it is
+	// huge — it arrives a third of a turn in, not at the end), so a fast-early
+	// ease over the whole window slammed it through at 21x cruise; one plain
+	// smootherstep window rode the transit just under cruise x3.
 	SWEEP: [0.66, 0.96], // passenger: gaze road -> live orbit gaze — starts
 	// exactly where TRAVERSE ends: an overlap popped the position (the two
 	// formulas disagree mid-phase; they only meet at the boundary).
+	//
+	// BUT THE FIRST THIRD OF THE TURN LOOKS AT NOTHING. The eye has just left
+	// the bore facing the cyclorama, and the stair only enters the frame at
+	// wS ≈ 0.37 (progress 0.72 on the gauge; 0.71 is bare sky). Under the
+	// plain window that beat cost 103vh of wheel — a whole screen of grey
+	// gradient right after the corridor's own tail, and the visitor who had
+	// just seen the last photograph was still "in the tunnel" for two screens.
+	// Worse, the transit then fell at u = 0.5, the window's PEAK rate (1.875x
+	// its mean). So the turn is front-loaded now, and by how much is the
+	// measurement above: the empty SWEEP_EMPTY of the angle is spent over
+	// SWEEP_EMPTY_OVER of the window, and the rest — the stair — over the
+	// rest, at a lower rate than before. Two cubic Hermite pieces (sweepTurn),
+	// flat at both ends of the window as the plain one was, C1 through the
+	// knee at SWEEP_KNEE_RATE. The lean reads the yaw rate through a tanh, so
+	// the faster empty part banks a degree harder and nothing else.
+	SWEEP_EMPTY: 0.37, // of the turn: bare sky before the stair enters
+	SWEEP_EMPTY_OVER: 0.2, // of the window that empty part gets
+	SWEEP_KNEE_RATE: 1.1, // d(turn)/d(window) at the knee, ~1.4x the mean after it
 	//
 	// MORPH_OUT is DELIBERATELY EARLY AND SHORT: the perspective drains
 	// right after the exit — the Hitchcock beat plays before the head
@@ -473,6 +546,51 @@ export const rideRate = (progress) => {
  * and the flow gauge has to be re-read after any change to one of them.
  */
 const win = (v, [a, b]) => smootherstep(clamp((v - a) / (b - a)));
+
+/** Cubic Hermite on t in [0, 1]: values p0, p1 and slopes m0, m1 (per unit t). */
+const hermite = (t, p0, m0, p1, m1) => {
+	const t2 = t * t;
+	const t3 = t2 * t;
+	return (
+		(2 * t3 - 3 * t2 + 1) * p0 +
+		(t3 - 2 * t2 + t) * m0 +
+		(-2 * t3 + 3 * t2) * p1 +
+		(t3 - t2) * m1
+	);
+};
+
+/**
+ * The passenger turn's own clock: the fraction of the sweep's angle turned at
+ * fraction u of its window. Front-loaded — see SWEEP_EMPTY in JOURNEY.
+ *
+ * The empty piece is a QUINTIC, not a cubic, and the difference is one number
+ * on the gauge. It has to leave u = 0 with zero slope AND zero curvature: the
+ * traverse arrives there braked to a stop with a smootherstep's flat tail, and
+ * a cubic that is merely flat at u = 0 still starts turning with all its
+ * acceleration at once — measured, |d flow| 10.3 at h = 0.663, the second
+ * roughest place on the whole ride. So the piece is t³(c₃ + c₄t + c₅t²),
+ * solved to meet the stair piece — a cubic Hermite from the knee to a flat end
+ * — in value, slope and curvature: C2 through the knee, C2 into the stop.
+ */
+const sweepTurn = (u) => {
+	const a = JOURNEY.SWEEP_EMPTY_OVER;
+	const b = JOURNEY.SWEEP_EMPTY;
+	const m = JOURNEY.SWEEP_KNEE_RATE;
+	const w = 1 - a;
+	if (u >= a) return hermite((u - a) / w, b, m * w, 1, 0);
+	// What the stair piece asks for at the knee, per unit of u.
+	const slope = m;
+	const curve = (6 * (1 - b) - 4 * m * w) / (w * w);
+	// The same, per unit of t = u / a, at t = 1: value b, slope S, curvature C.
+	const S = slope * a;
+	const C = curve * a * a;
+	// c₃ + c₄ + c₅ = b ; 3c₃ + 4c₄ + 5c₅ = S ; 6c₃ + 12c₄ + 20c₅ = C.
+	const c5 = (C - 6 * S + 6 * b) / 2;
+	const c4 = S - 3 * b - 2 * c5;
+	const c3 = b - c4 - c5;
+	const t = u / a;
+	return t * t * t * (c3 + c4 * t + c5 * t * t);
+};
 
 /**
  * A window that ARRIVES with a chosen slope instead of flat — the one place a
@@ -788,6 +906,8 @@ export default class Scene {
 		// .glb — brand/3d/README.md calls them "les deux molettes".
 		material.envMap = this.studioEnv;
 		material.envMapIntensity = 1;
+		// One-material only: the lacquer's two lobes (see SHADING).
+		Object.assign(material, this.shading.surface ?? {});
 		patchGlyphMaterial(material, {
 			litness: this.litness,
 			paper: PAPER,
@@ -1014,7 +1134,7 @@ export default class Scene {
 	 * the orbit's real poses and velocities, not approximations of them.
 	 */
 	#orbitCamera(progress, out) {
-		const pose = orbitPose(progress);
+		const pose = orbitPose(progress, this.shading.orbit);
 		const { halfW, halfH } = this.#frustum(this.aspectRatio);
 		const layout = this.#layout();
 
@@ -1449,7 +1569,9 @@ export default class Scene {
 		// DERIVED — focus − dir·D — so the camera arcs around the subject
 		// because that is what looking does. As MORPH_OUT drains k, D grows
 		// and the arc becomes the receding spiral of the dolly zoom.
-		const wS = win(h, JOURNEY.SWEEP); // uniform: see the SWEEP note
+		// Front-loaded, not the plain window: see SWEEP_EMPTY.
+		const [sA, sB] = JOURNEY.SWEEP;
+		const wS = sweepTurn(clamp((h - sA) / (sB - sA)));
 		// The end heading is the orbit gaze AT THIS h — animate() writes it
 		// on the ortho camera for the frame being drawn, and #orbitCamera
 		// gives the same answer for the neighbours the difference asks for —

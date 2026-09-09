@@ -119,11 +119,13 @@ export function distanceFromRest(progress) {
  */
 const ramp = (d, { dead, ramp: len }) => smoothstep(clamp((d - dead) / len));
 
-export function orbitPose(progress) {
+export function orbitPose(progress, { lit: litRamp = ORBIT.LIT } = {}) {
 	const s = wrap01(progress);
 	const d = distanceFromRest(s);
 	const travel = ramp(d, ORBIT.TRAVEL);
-	const lit = ramp(d, ORBIT.LIT);
+	// The flat-to-lit ramp is the one thing a page may override: index.html
+	// keeps ORBIT.LIT untouched, v2 hands its own (see SHADING in Scene.js).
+	const lit = ramp(d, litRamp);
 
 	return {
 		azimuth: s * TAU,

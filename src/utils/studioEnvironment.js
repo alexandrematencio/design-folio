@@ -40,14 +40,50 @@ import * as THREE from "three";
  *
  * Cheap: 512 x 256 floats, built once, PMREM-filtered by the renderer.
  */
+const smooth = (t) => {
+	const c = Math.min(1, Math.max(0, t));
+	return c * c * (3 - 2 * c);
+};
+
 export function createStudioEnvironment({
 	width = 512,
 	height = 256,
 	ceiling = 42,
 	horizon = 0.32,
 	floor = 0.015,
+	// STRUCTURED SOURCES, on top of the gradient — the one-material page
+	// only. A polished surface reflecting a featureless gradient looks like
+	// a chrome ball: one smooth wash, no edge anywhere, and every grazing
+	// face in the tunnel smears from cobalt to lavender to white. A real
+	// studio is dim everywhere and bright in a few RECTANGLES — softboxes,
+	// strips, a bounce card — and those edges are what a lacquer shows.
+	//
+	// Each panel: { azimuth, elevation, halfWidth, halfHeight, soft,
+	// radiance }, all angles in degrees. Azimuth is atan2(z, x) in world,
+	// elevation is asin(y). halfWidth / halfHeight is the plateau, soft the
+	// penumbra past it. Panels take the MAX over the gradient, so a small
+	// bright panel never lifts the sky around it.
+	panels = [],
 } = {}) {
 	const data = new Float32Array(width * height * 4);
+	const DEG = Math.PI / 180;
+	const panelAt = (azDeg, elDeg) => {
+		let v = 0;
+		for (const p of panels) {
+			let dAz = Math.abs(azDeg - p.azimuth) % 360;
+			if (dAz > 180) dAz = 360 - dAz;
+			const dEl = Math.abs(elDeg - p.elevation);
+			const wAz = 1 - smooth((dAz - p.halfWidth) / p.soft);
+			const wEl = 1 - smooth((dEl - p.halfHeight) / p.soft);
+			// A softbox is brightest at its centre: a gentle dome over the
+			// plateau, so the reflection has a gradient IN it and not only
+			// at its edge.
+			const dome = 1 - 0.25 * Math.min(1, (dAz * dAz + dEl * dEl) /
+				((p.halfWidth + p.soft) * (p.halfHeight + p.soft)));
+			v = Math.max(v, p.radiance * wAz * wEl * dome);
+		}
+		return v;
+	};
 
 	for (let y = 0; y < height; y++) {
 		// three samples an equirect map as v = 0.5 + asin(dir.y) / PI, and a
@@ -68,11 +104,17 @@ export function createStudioEnvironment({
 			value = horizon + (floor - horizon) * (t * t * (3 - 2 * t));
 		}
 
+		const elDeg = Math.asin(up) / DEG;
 		for (let x = 0; x < width; x++) {
 			const i = (y * width + x) * 4;
-			data[i] = value;
-			data[i + 1] = value;
-			data[i + 2] = value;
+			// three: u = atan2(dir.z, dir.x) / 2PI + 0.5, so the column's
+			// azimuth runs -180 .. 180 across the row, +X at the middle.
+			const v = panels.length
+				? Math.max(value, panelAt(((x + 0.5) / width - 0.5) * 360, elDeg))
+				: value;
+			data[i] = v;
+			data[i + 1] = v;
+			data[i + 2] = v;
 			data[i + 3] = 1;
 		}
 	}
