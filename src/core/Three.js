@@ -3,6 +3,45 @@ import Lenis from "lenis";
 import WebGLContext from "./WebGLContext";
 import Scene from "../scenes/Scene";
 
+/**
+ * THE GALLERY PLATEAU (v2 only).
+ *
+ * The gallery is not a state, it is a stretch of road where the orbit stands
+ * still. The spacer of v2.html is lengthened by VH, and the scroll-to-progress
+ * map becomes monotone-by-parts: below the plateau the orbit runs slightly
+ * faster than before (the same 1200vh of film now sits inside a longer
+ * spacer), on the plateau it is pinned at PLATEAU, above it resumes exactly
+ * where it stopped. Nothing is integrated — scroll back and the whole thing
+ * replays in reverse, gallery included.
+ *
+ * PLATEAU is not a taste value. It is the progress at which the journey's
+ * perspective camera sits INSIDE the bore, past its mouth and still a way from
+ * its exit: JOURNEY.TRAVERSE is [0.44, 0.66] of the leg, and the eased
+ * position crosses the mouth at h ≈ 0.542 and the exit at h ≈ 0.627. h = 0.56
+ * puts it 0.68 units past the mouth (progress 0.2 + 0.56 × 0.675), where the
+ * four cobalt edges of the bore frame the whole picture and the exit is a
+ * bright rectangle ahead — which is what the gallery's own tunnel has to line
+ * up with, edge for edge, for the crossfade to read as matter dissolving.
+ *
+ * VH follows from the tunnel's length, not the other way round: the gallery is
+ * 18 bore-widths long, the journey cruises through the bore at ~35vh per
+ * bore-width, and the traverse owns 0.84 of the plateau — 18 × 35 / 0.84 ≈ 750.
+ * That lands at ~39vh of wheel per row of photographs.
+ */
+export const GALLERY = {
+	LOOP_VH: 1200, // what v2.html's spacer was before the plateau
+	VH: 750, // what the plateau adds to it
+	PLATEAU: 0.578, // progress the orbit is pinned at while the gallery runs
+};
+
+/** [a, g, k]: plateau start in raw scroll, its width, and the loop's stretch. */
+const span = () => {
+	const total = GALLERY.LOOP_VH + GALLERY.VH;
+	const k = total / GALLERY.LOOP_VH;
+	const g = GALLERY.VH / total;
+	return { a: GALLERY.PLATEAU / k, g, k };
+};
+
 class Three {
 	constructor(container, options = {}) {
 		this.container = container;
@@ -21,6 +60,15 @@ class Three {
 		// arriving back from a dive watches it play in reverse, before the
 		// scroll is handed the camera again.
 		this.progressOverride = null;
+
+		// Where the gallery stands, read by Gallery.js and by main-v2.js.
+		// `t` runs 0..1 across the plateau; `active` is strictly between, so
+		// the two seam poses (t exactly 0 and 1) count as "not in the gallery"
+		// — they are the frames where the logo's own picture is the truth.
+		this.gallery = { t: 0, active: false };
+		// Same role as progressOverride, for tools/shoot.mjs and for the
+		// return from a photograph: pins t and parks the orbit on the plateau.
+		this.galleryOverride = null;
 
 		// The gentle pull onto the rest pose (v2 only, options.journey). One
 		// scrollTo per approach: armed while far from a rest multiple, spent
@@ -117,12 +165,66 @@ class Three {
 		});
 	}
 
+	#setGallery(t) {
+		this.gallery.t = t;
+		this.gallery.active = t > 0 && t < 1;
+	}
+
 	#getLoopProgress() {
-		if (this.progressOverride !== null) return this.progressOverride;
+		// The gallery override outranks the progress one: the only progress a
+		// pinned gallery can be seen at is the plateau's.
+		if (this.galleryOverride !== null) {
+			this.#setGallery(this.galleryOverride);
+			return GALLERY.PLATEAU;
+		}
+		if (this.progressOverride !== null) {
+			this.#setGallery(0);
+			return this.progressOverride;
+		}
 		const limit = this.lenis?.limit;
 		if (!limit) return 0;
 		const raw = (this.lenis.scroll % limit) / limit;
-		return raw < 0 ? raw + 1 : raw;
+		const u = raw < 0 ? raw + 1 : raw;
+
+		// v1 has no plateau and never will: index.html is frozen.
+		if (!this.options.journey) {
+			this.#setGallery(0);
+			return u;
+		}
+
+		const { a, g, k } = span();
+		if (u < a) {
+			this.#setGallery(0);
+			return u * k;
+		}
+		if (u <= a + g) {
+			this.#setGallery((u - a) / g);
+			return GALLERY.PLATEAU;
+		}
+		this.#setGallery(1);
+		return (u - g) * k;
+	}
+
+	/**
+	 * The inverses, for anyone who has to PUT the scroll somewhere: the return
+	 * from a dive parks on the step view, the return from a photograph parks
+	 * back inside the tunnel. Both used to be `limit × progress`, which stopped
+	 * being true the moment the spacer grew a plateau — the dive would have
+	 * landed a few degrees off the steps for no visible reason.
+	 */
+	scrollFor(progress) {
+		const limit = this.lenis?.limit ?? 0;
+		const p = ((progress % 1) + 1) % 1;
+		if (!this.options.journey) return limit * p;
+		const { g, k } = span();
+		return limit * (p <= GALLERY.PLATEAU ? p / k : p / k + g);
+	}
+
+	scrollForGallery(t) {
+		const limit = this.lenis?.limit ?? 0;
+		if (!this.options.journey) return 0;
+		const { a, g } = span();
+		return limit * (a + Math.min(1, Math.max(0, t)) * g);
 	}
 
 	#render() {

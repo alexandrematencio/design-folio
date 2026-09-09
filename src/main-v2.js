@@ -174,8 +174,9 @@ document.addEventListener("DOMContentLoaded", () => {
 				// calls the step view, not at wherever the browser left it.
 				three.scene.endDive();
 				three.lenis?.start();
-				const limit = three.lenis?.limit ?? 0;
-				three.lenis?.scrollTo(limit * ORBIT.STEPS, {
+				// scrollFor, not limit × progress: the spacer carries the
+				// gallery plateau, so the two stopped being the same number.
+				three.lenis?.scrollTo(three.scrollFor(ORBIT.STEPS), {
 					immediate: true,
 					force: true,
 				});
