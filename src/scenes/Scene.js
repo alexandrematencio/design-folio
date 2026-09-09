@@ -16,6 +16,7 @@ import {
 	lerp,
 	smoothstep,
 	smootherstep,
+	TAU,
 } from "../utils/utils";
 
 /* --------------------------------------------------------------- constants */
@@ -322,6 +323,18 @@ const TUNNEL = {
  * the subject by construction — the U-turn is not choreographed, it is the
  * geometry of looking.
  *
+ * ONE LACET, IN THE ORBIT'S OWN SENSE. The turn goes LEFT, the way the orbit
+ * itself rotates, and it chases the LIVE orbit gaze — so from the exit to the
+ * rest pose the yaw is monotone, the lean never changes sign, and the climb
+ * (0° at the exit, 12° at the hand-over, 35° at rest) is one ascent, because
+ * the orbit's homecoming ramp (TRAVEL_RETURN) starts the moment the
+ * perspective has drained instead of waiting for its departure-side mirror.
+ * The first cut turned right and landed on a held 12°: measured on the
+ * render camera, yaw 0 → 194° → 180°, roll −30° → 0 → +3° → 0, then a level
+ * hold of 50vh before the tilt-up began — Alexandre read it as "turns, keeps
+ * going toward the back of the logo, catches itself, climbs a notch, then
+ * climbs". See the README, "Le chemin de la caméra".
+ *
  * DRIVING MISS DAISY. Phases are sequential and every seam is a smooth flow
  * minimum — a breath at the gate, a breath at each mouth — never a cut: all
  * tracks ease with zero slope at their edges. The judge is not any curve in
@@ -337,12 +350,13 @@ export const JOURNEY = {
 	FROM: 0.2, // the leg begins here — just past the menu's fade window
 	TO: 0.875, // and ends ON the orbit: azimuth 315, the +Z side. Geometry.
 	// Phases, fractions of the leg. Sequential on purpose (see above).
-	// ALIGN is the longest phase and has to be: it walks SIXTY world units
-	// down from the orbit to the parking spot on the axis. At 0.2 of the leg
-	// the bezier's midpoint ran 2.6x the orbit's speed and the room streamed
-	// (6x cruise on the gauge); at 0.3, with the park pulled closer, it sits
-	// inside the budget.
-	ALIGN: [0, 0.3], // ortho: leave the orbit, swing onto the bore's axis
+	// ALIGN is the longest phase and has to be: it is the orbit's own turn
+	// winding down onto the axis heading — 63° of yaw that leaves at the
+	// orbit's rate and must arrive at zero — plus 12° of pitch and the
+	// frame's centre walking from the mark to the bore. Written in the
+	// picture, not on a road: the camera is orthographic here and a position
+	// shows nothing of itself (see the ALIGN branch of #ridePose).
+	ALIGN: [0, 0.3], // ortho: leave the orbit, settle onto the bore's axis
 	MORPH_IN: [0.3, 0.44], // depth pours in while the mouth rolls closer
 	// TRAVERSE is wide because the walls are at 0.4 units: the gauge put
 	// the in-bore speed budget at ~0.1 world unit per step, and the ride is
@@ -370,9 +384,16 @@ export const JOURNEY = {
 	// flat at both ends of the window as the plain one was, C1 through the
 	// knee at SWEEP_KNEE_RATE. The lean reads the yaw rate through a tanh, so
 	// the faster empty part banks a degree harder and nothing else.
-	SWEEP_EMPTY: 0.37, // of the turn: bare sky before the stair enters
-	SWEEP_EMPTY_OVER: 0.2, // of the window that empty part gets
-	SWEEP_KNEE_RATE: 1.1, // d(turn)/d(window) at the knee, ~1.4x the mean after it
+	// Re-measured for the LEFT turn (the stair now enters from the left at
+	// wS ≈ 0.44, progress 0.706 on the wide layout) and softened: the first
+	// numbers (0.37 over 0.2, knee 1.1) turned at 3.0x the window's mean and
+	// then halved the yaw rate inside 18vh at the knee — the lean fell from
+	// 28° to 20° in one breath and the acceleration gauge put that knee
+	// second on the whole ride (8.5, 2.4x cruise). Peak 2.4x now, and the
+	// worst rate drop over 0.05 of the window is 0.96 against 1.75.
+	SWEEP_EMPTY: 0.44, // of the turn: bare sky before the stair enters
+	SWEEP_EMPTY_OVER: 0.3, // of the window that empty part gets
+	SWEEP_KNEE_RATE: 1.3, // d(turn)/d(window) at the knee, ~1.6x the mean after it
 	//
 	// MORPH_OUT is DELIBERATELY EARLY AND SHORT: the perspective drains
 	// right after the exit — the Hitchcock beat plays before the head
@@ -440,6 +461,22 @@ const LEG = JOURNEY.TO - JOURNEY.FROM;
 /** The leg's own clock, both ways. h runs 0..1 from JOURNEY.FROM to TO. */
 export const journeyH = (progress) => (progress - JOURNEY.FROM) / LEG;
 export const journeyProgress = (h) => JOURNEY.FROM + h * LEG;
+
+/**
+ * THE HOMECOMING RAMP (v2) — the orbit's own travel ramp (elevation 12° back
+ * up to the isometric 35°, zoom 1.75 back to 1, the mark sliding back to its
+ * place on the page), started the moment the exit's perspective has drained
+ * rather than at the departure ramp's mirror. The departure must be done by
+ * the menu at 0.125; the return has no deadline, and starting it here turns
+ * "sweep, land, hold level, then climb" into ONE climb that begins as the head
+ * turns. The sweep chases the live orbit frame — gaze, centre line and frame
+ * height — so it lands on whatever the ramp is doing at LAND. Handed to
+ * orbitPose as `travelReturn`; index.html never sees it.
+ */
+const TRAVEL_RETURN = {
+	dead: ORBIT.TRAVEL.dead,
+	ramp: 2 * (1 - journeyProgress(JOURNEY.MORPH_OUT[1])) - ORBIT.TRAVEL.dead,
+};
 
 /**
  * THE RIDE, WRITTEN ONCE — where the camera stands along the bore's axis
@@ -615,14 +652,6 @@ const heading = (az, el) =>
 		Math.sin(el),
 		Math.cos(az) * Math.cos(el),
 	);
-const bezier = (p0, p1, p2, p3, u) => {
-	const v = 1 - u;
-	return new THREE.Vector3()
-		.addScaledVector(p0, v * v * v)
-		.addScaledVector(p1, 3 * v * v * u)
-		.addScaledVector(p2, 3 * v * u * u)
-		.addScaledVector(p3, u * u * u);
-};
 
 /**
  * THE BANKING — the camera leans into its turns, the way a rail car leans on
@@ -630,13 +659,15 @@ const bezier = (p0, p1, p2, p3, u) => {
  * bolted to the world reads as a machine panning. Lean it and the same move
  * reads as a body being carried through the turn.
  *
- * Two turns on this leg, and only two. ALIGN, where the bezier leaves the
- * orbit and swings onto the bore's axis; and SWEEP, the 166-degree passenger
- * turn after the exit. The bore itself is straight — heading is constant
- * through MORPH_IN and TRAVERSE — so the lean is exactly zero everywhere
- * inside the conduit, which is also why the corridor inherits a level horizon
- * at the door for free. The orbit has none either: it is the page at rest and
- * the rest pose must stay exact.
+ * ONE turn leans on this leg: SWEEP, the 171-degree passenger turn after the
+ * exit. ALIGN does not, any more — it is the orbit's own turn winding down,
+ * and the orbit has no lean (it is the page at rest and the rest pose must
+ * stay exact), so a lean that faded IN at the leg's edge was a movement of
+ * its own in the middle of a constant-rate turn: measured 0 → 7° → 4° → 20°
+ * → 0 across the approach, with the last 20° gone in 36vh. The bore itself
+ * is straight — heading is constant through MORPH_IN and TRAVERSE — so the
+ * lean is exactly zero everywhere inside the conduit, which is also why the
+ * corridor inherits a level horizon at the door for free.
  *
  * THE LATERAL RATE IS THE HEADING RATE, and getting there cost a measurement.
  * A passenger feels v²κ, so the obvious form is speed × yaw rate — and it was
@@ -663,9 +694,9 @@ const bezier = (p0, p1, p2, p3, u) => {
  * heading — which is why the corridor inherits a level horizon at the door),
  * peak 8.655 rad in ALIGN at h = 0.26, peak 18.11 rad in SWEEP at h = 0.786.
  * RATE = 11 puts the sweep at 27.8 degrees and the align at 19.7 — the brief's
- * window on both counts. The signs come out opposite (ALIGN turns left, SWEEP
- * turns right), so the two leans mirror each other, which is the geometry
- * talking and not a choice.
+ * window on both counts. (Those were the numbers of the first cut; the sweep
+ * now turns LEFT and peaks at 28° at h = 0.68 on the render camera, and the
+ * align is gated out — see above.)
  *
  * tanh rather than a clamp, deliberately: a clamp puts a corner in the roll at
  * the moment the turn saturates, and a corner in the roll is precisely the
@@ -684,6 +715,13 @@ const BANK = {
 	// either side, 4.2x cruise, the biggest single jolt on the leg and one that
 	// no curve could have smoothed, because it was a gate that never shut.
 	EDGE: 0.03,
+	// Of the leg: how long the lean takes to die before LAND. The sweep
+	// arrives at the orbit's own yaw rate (4.24 rad per unit of h — an
+	// 11° lean by the formula) and the orbit has no lean, so the lean has to
+	// be taken away WHILE the turn goes on. At 0.03 that was 11° of roll in
+	// 24vh, a snap at the very end of the ride; here it is a tenth of the
+	// loop.
+	EDGE_OUT: 0.15,
 };
 
 /* ------------------------------------------------------------------- scene */
@@ -698,6 +736,12 @@ export default class Scene {
 		// visibility instead of by a hand-tuned scroll window. index.html is
 		// shipped and frozen; it never sets this and never changes.
 		this.journey = journey;
+		// What orbitPose is handed: the shading's lit ramp, plus the tunnel
+		// leg's homecoming ramp when there is a tunnel leg.
+		this.orbitOptions = {
+			...this.shading.orbit,
+			travelReturn: journey ? TRAVEL_RETURN : null,
+		};
 		// World samples of the text block's footprint on the room, built once
 		// the projection exists. Null until then, and on v1 forever.
 		this.pageFootprint = null;
@@ -1134,7 +1178,7 @@ export default class Scene {
 	 * the orbit's real poses and velocities, not approximations of them.
 	 */
 	#orbitCamera(progress, out) {
-		const pose = orbitPose(progress, this.shading.orbit);
+		const pose = orbitPose(progress, this.orbitOptions);
 		const { halfW, halfH } = this.#frustum(this.aspectRatio);
 		const layout = this.#layout();
 
@@ -1359,8 +1403,8 @@ export default class Scene {
 		if (h <= 0 || h >= 1) return;
 
 		// The two things #ridePose must not recompute per sample: the bore's
-		// world frame, and the orbit anchors the ALIGN bezier leaves from
-		// (they are read at fixed progress values, so they do not depend on h
+		// world frame, and the orbit anchors ALIGN leaves from (they are
+		// read at fixed progress values, so they do not depend on h
 		// at all). Three evaluations a frame, one of each.
 		const bore = this.boreFrame();
 		const align = this.#alignAnchors(bore);
@@ -1427,42 +1471,41 @@ export default class Scene {
 	}
 
 	/**
-	 * Where ALIGN's bezier leaves from, and how fast. Read at FIXED progress
-	 * values — the leg's own edge and a central difference around it — so it
-	 * is a constant of the frame, not a function of h. Hoisted out of the
-	 * ride so that sampling three h's does not cost nine orbit poses.
+	 * What ALIGN leaves from, read at FIXED progress values — the leg's edge
+	 * and a central difference around it — so it is a constant of the frame
+	 * and not a function of h. Hoisted out of the ride so that sampling three
+	 * h's does not cost nine orbit poses.
+	 *
+	 * Four numbers: the orbit's gaze at the edge, how fast that gaze is yawing
+	 * there, how far the orbit stands from the mark (position along the gaze
+	 * is invisible to an orthographic camera, so the ride keeps that radius and
+	 * leaves the leg's edge on the orbit's own position, exactly), and where
+	 * the frame's centre has to end up — on the bore's axis, at the park.
 	 */
 	#alignAnchors(bore) {
 		const d = 0.002;
-		this.#orbitCamera(JOURNEY.FROM, this.scratch);
-		const at = this.scratch.position.clone();
-		this.#orbitCamera(JOURNEY.FROM + d, this.scratch);
-		const aheadAt = this.scratch.position.clone();
-		this.#orbitCamera(JOURNEY.FROM - d, this.scratch);
-		const vel = aheadAt.sub(this.scratch.position).divideScalar(2 * d);
-
-		const park = bore.ride(-JOURNEY.PARK);
-		const du = JOURNEY.ALIGN[1] * (JOURNEY.TO - JOURNEY.FROM);
-		// THE MARK STAYS PINNED, exactly as the orbit pins it: the gaze is
-		// "toward the mark" plus a small eased offset that lands on the axis
-		// at the park. Aiming anywhere else while the bezier travels lets
-		// 18 % of the frame's ink slide — both earlier versions (a target
-		// lerp, then a free direction blend) measured ~4x cruise from that
-		// alone, with every camera CHANNEL at cruise speed. The offset is
-		// only the few degrees between "mark seen from the park" and the
-		// axis, so its own rate is noise; the swing the visitor sees is the
-		// bezier's, which the pinning turns into an orbit-like sweep AROUND
-		// the mark.
-		const fromPark = this.pivot.clone().sub(park).normalize();
-		let offAz = azimuth(bore.axisDir) - azimuth(fromPark);
-		if (offAz > Math.PI) offAz -= Math.PI * 2;
-		if (offAz < -Math.PI) offAz += Math.PI * 2;
+		const gaze = (p) => {
+			this.#orbitCamera(p, this.scratch);
+			return new THREE.Vector3(0, 0, -1).applyQuaternion(
+				this.scratch.quaternion,
+			);
+		};
+		const ahead = gaze(JOURNEY.FROM + d);
+		const behind = gaze(JOURNEY.FROM - d);
+		const at = gaze(JOURNEY.FROM);
+		const radius = this.scratch.position.distanceTo(this.pivot);
+		const wrap = (a) => ((((a + Math.PI) % TAU) + TAU) % TAU) - Math.PI;
+		const az0 = azimuth(at);
 		return {
-			at,
-			handle: at.clone().addScaledVector(vel, du / 3),
-			park,
-			offAz,
-			offEl: 0 - elevation(fromPark),
+			az0,
+			el0: elevation(at),
+			// The swing still to make, in the orbit's own sense of rotation.
+			dAz: wrap(azimuth(bore.axisDir) - az0),
+			dEl: 0 - elevation(at),
+			// rad per unit of progress, signed: the orbit's yaw at the edge.
+			yawRate: wrap(azimuth(ahead) - azimuth(behind)) / (2 * d),
+			radius,
+			park: bore.ride(-JOURNEY.PARK),
 		};
 	}
 
@@ -1485,23 +1528,39 @@ export default class Scene {
 		const { s, ride, axisDir, mouth } = bore;
 
 		if (h < JOURNEY.MORPH_IN[0]) {
-			// ALIGN: leave the orbit at its own speed (bezier matched by
-			// central difference), land parked ON the ride line with zero
-			// velocity — the first breath. The gaze walks from the mark to a
-			// point riding the camera down the axis (GAZE_IN), so the swing
-			// dies exactly as its window flattens.
-			const pos = bezier(
-				align.at,
-				align.handle,
-				align.park,
-				align.park,
-				h / JOURNEY.ALIGN[1],
-			);
-			const toMark = this.pivot.clone().sub(pos).normalize();
-			const wG = win(h, JOURNEY.GAZE_IN);
-			const ya = azimuth(toMark) + align.offAz * wG;
-			const el = elevation(toMark) + align.offEl * wG;
-			return { pos, dir: heading(ya, el), ortho: true };
+			// ALIGN, WRITTEN IN THE PICTURE. The camera is orthographic here,
+			// so the only things a visitor can see change are the gaze's two
+			// angles and where the frame's centre sits — a position walking
+			// sixty units down to the park shows NOTHING of itself. The first
+			// cut drove a bezier down that road and aimed at the mark from
+			// wherever it was: the yaw rate then dipped to a third of the
+			// orbit's, surged to twice it, and slammed to zero in 36vh, while
+			// the mark drifted half a frame up and back and a 20° lean came
+			// and went on top — "too many angles", measured as such (see the
+			// README, "Le chemin de la caméra"). So the three visible tracks
+			// are now scheduled directly:
+			//   yaw    leaves at the orbit's own rate (matched, so there is no
+			//          seam) and decelerates once, C2, onto the axis heading —
+			//          the orbit's turn winding down, nothing else
+			//   pitch  12° down to level, one quintic, flat at both ends
+			//   centre the mark (the orbit keeps it centred) to the park on
+			//          the bore's axis, one quintic — the mouth ends centred
+			// and the position is DERIVED — centre − gaze × the orbit's own
+			// radius — so at h = 0 it IS the orbit's position and nothing on
+			// any channel moves that the picture does not show.
+			const u = h / JOURNEY.ALIGN[1];
+			const w = smootherstep(clamp(u));
+			// Departure slope of the yaw, as a share of the whole swing: the
+			// orbit's rate per unit of u over the angle still to turn. g is
+			// rampTo run backwards — it LEAVES with that slope and arrives
+			// flat, zero curvature at both ends (see rampTo for the bound on
+			// the slope; the orbit asks for ~1.16 of a possible 2.4).
+			const m = (align.yawRate * JOURNEY.ALIGN[1] * LEG) / align.dAz;
+			const g = 1 - rampTo(1 - u, m);
+			const dir = heading(align.az0 + align.dAz * g, align.el0 + align.dEl * w);
+			const centre = this.pivot.clone().lerp(align.park, w);
+			const pos = centre.addScaledVector(dir, -align.radius);
+			return { pos, dir, ortho: true };
 		}
 
 		/* ---- the perspective interlude ---- */
@@ -1563,8 +1622,8 @@ export default class Scene {
 		}
 
 		// SWEEP + MORPH_OUT: the passenger turn. The gaze direction sweeps
-		// (the long way, so the room hands over to the stair continuously)
-		// from the road ahead onto the orbit's own gaze at TO; the focus
+		// (left, the orbit's own way — see below) from the road ahead onto
+		// the orbit's LIVE gaze; the focus
 		// walks from the look-ahead point onto the mark; and the position is
 		// DERIVED — focus − dir·D — so the camera arcs around the subject
 		// because that is what looking does. As MORPH_OUT drains k, D grows
@@ -1577,14 +1636,35 @@ export default class Scene {
 		// gives the same answer for the neighbours the difference asks for —
 		// so the sweep delivers the very frame the orbit will keep, and LAND
 		// has nothing to absorb.
-		this.#orbitCamera(journeyProgress(h), this.scratch);
+		const orbit = this.#orbitCamera(journeyProgress(h), this.scratch);
 		const fwdEnd = new THREE.Vector3(0, 0, -1).applyQuaternion(
 			this.scratch.quaternion,
 		);
-		// The long way round, through -X: the stair re-enters from the
-		// right, the side the ortho cut had already validated by eye.
+		// The orbit frame's centre line, taken at the mark's depth: the mark
+		// itself while the orbit is recentred, and drifting back toward the
+		// mark's place on the page once the homecoming ramp is under way
+		// (TRAVEL_RETURN) — the sweep lands on the frame the orbit is
+		// actually drawing, whatever that ramp is doing at LAND.
+		const centreEnd = this.scratch.position
+			.clone()
+			.addScaledVector(
+				fwdEnd,
+				this.pivot.clone().sub(this.scratch.position).dot(fwdEnd),
+			);
+		const H_END = VIEW_HEIGHT / orbit.zoom;
+		// THE SHORT WAY, LEFT — the orbit's own sense of rotation, always.
+		// The first cut went the long way round through -X so the stair
+		// would re-enter from the right; but the target is the LIVE orbit
+		// gaze and the orbit turns left, so a right-hand sweep was chasing a
+		// mark that walked the other way: it turned 194° to catch it, then
+		// backed up 14° with it to the +Z pose, and the lean flipped sign
+		// in the reversal. Measured on the render camera: yaw 0 → 194 → 180,
+		// roll −30 → 0 → +3 → 0 (see the README). Turning the orbit's way,
+		// the yaw is monotone from the exit to the rest pose and the lean
+		// never changes sign. Wrapped into (−2π, 0] rather than the nearest
+		// half-turn: the target crosses 180° at TO and must not flip.
 		let dAz = azimuth(fwdEnd) - azimuth(axisDir);
-		if (dAz < 0) dAz += Math.PI * 2;
+		dAz = ((dAz % TAU) + TAU) % TAU - TAU;
 		const dir = heading(
 			azimuth(axisDir) + dAz * wS,
 			lerp(0, elevation(fwdEnd), wS),
@@ -1593,8 +1673,8 @@ export default class Scene {
 		const focus = axisEnd
 			.clone()
 			.addScaledVector(axisDir, JOURNEY.LOOK * s)
-			.lerp(this.pivot, wS);
-		const Hn = lerp(2 * K_MAX * JOURNEY.LOOK * s, H_TRAVEL, wOut);
+			.lerp(centreEnd, wS);
+		const Hn = lerp(2 * K_MAX * JOURNEY.LOOK * s, H_END, wOut);
 		const pos = focus.addScaledVector(dir, -Hn / (2 * k));
 		// The crane (see LIFT / PUSH): up and forward into clear air, gone by
 		// the time the drain ends — the path recedes high over the solid
@@ -1637,8 +1717,8 @@ export default class Scene {
 		return (
 			BANK.MAX *
 			Math.tanh(rate / BANK.RATE) *
-			win(h, [0, BANK.EDGE]) *
-			win(JOURNEY.LAND - h, [0, BANK.EDGE])
+			win(h, [JOURNEY.SWEEP[0], JOURNEY.SWEEP[0] + BANK.EDGE]) *
+			win(JOURNEY.LAND - h, [0, BANK.EDGE_OUT])
 		);
 	}
 	/* ------------------------------------------------------- page visibility */

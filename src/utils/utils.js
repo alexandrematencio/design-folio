@@ -119,10 +119,22 @@ export function distanceFromRest(progress) {
  */
 const ramp = (d, { dead, ramp: len }) => smoothstep(clamp((d - dead) / len));
 
-export function orbitPose(progress, { lit: litRamp = ORBIT.LIT } = {}) {
+/**
+ * `travelReturn` (v2 only) lets the HOMECOMING half of the orbit — s > 0.5,
+ * the side the tunnel leg lands on — ramp its travel over a longer window than
+ * the departure. The departure ramp must be done by STEPS (0.125) for the menu
+ * to read; the return has no such deadline, and a climb that begins the moment
+ * the tunnel's exit turn hands the camera back reads as one ascent instead of
+ * a landing, a pause, and a second climb. Both ramps read 1 at the far side
+ * (d = 1), so the switch at s = 0.5 is invisible. index.html never passes it.
+ */
+export function orbitPose(
+	progress,
+	{ lit: litRamp = ORBIT.LIT, travelReturn = null } = {},
+) {
 	const s = wrap01(progress);
 	const d = distanceFromRest(s);
-	const travel = ramp(d, ORBIT.TRAVEL);
+	const travel = ramp(d, s > 0.5 && travelReturn ? travelReturn : ORBIT.TRAVEL);
 	// The flat-to-lit ramp is the one thing a page may override: index.html
 	// keeps ORBIT.LIT untouched, v2 hands its own (see SHADING in Scene.js).
 	const lit = ramp(d, litRamp);

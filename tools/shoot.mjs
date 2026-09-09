@@ -55,13 +55,14 @@ const OUT = path.join(ROOT, args.out ?? "tools/shots");
 // Rest, the first flinch out of flatness, the two poses that matter (steps
 // square on at 0.125, the back at 0.625) and two points in between.
 //
-// The last three are the JOURNEY'S TWO TURNS, at the progress where each
-// leans hardest (BANK in Scene.js): 0.376 is ALIGN's peak, h = 0.260, worth
-// 19.8 degrees of roll on the render camera, and 0.731 / 0.774 straddle
-// SWEEP's, h = 0.795, worth 29.0. On v2 the horizon in those three
-// must be visibly off level — left in the first, right in the other two —
-// and the scene must be whole, not sheared. On v1 they are ordinary orbit
-// poses and prove nothing; they cost a screenshot.
+// The last three are the JOURNEY'S TURNS. 0.376 is the middle of ALIGN,
+// h = 0.260, which used to lean 19.8 degrees and now must be dead LEVEL:
+// ALIGN is the orbit's own turn winding down and carries no bank any more.
+// 0.731 / 0.774 straddle SWEEP's peak (28 degrees at h = 0.68 on the render
+// camera, fading to zero by LAND): on v2 the horizon in those two must be
+// visibly off level, the same way in both, and the scene whole, not sheared.
+// On v1 they are ordinary orbit poses and prove nothing; they cost a
+// screenshot.
 const FRAMES = [0, 0.02, 0.04, 0.07, 0.125, 0.3, 0.5, 0.625, 0.376, 0.731, 0.774];
 
 // --gallery: the plateau, sampled where the answers are. g002 is the first

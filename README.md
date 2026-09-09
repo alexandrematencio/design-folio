@@ -224,7 +224,9 @@ reste une fonction pure du scroll : marche arrière gratuite.
 Quand la caméra tourne, elle **s'incline dans le virage**, comme un wagon sur
 sa courbe. Deux virages sur cette étape, et deux seulement : ALIGN, où le
 bezier quitte l'orbite et se pose sur l'axe du conduit, et SWEEP, le demi-tour
-passager de 166° après la sortie. Le conduit est droit — le cap est constant
+passager de 166° après la sortie. *(Depuis « Le chemin de la caméra », plus
+bas, seul SWEEP s'incline encore, et il tourne à gauche : ALIGN est le virage
+de l'orbite qui s'éteint, et l'orbite ne s'incline pas.)* Le conduit est droit — le cap est constant
 sur MORPH_IN et TRAVERSE — donc l'inclinaison y vaut exactement zéro, et le
 couloir de la galerie hérite gratuitement d'un horizon d'aplomb à la porte.
 L'orbite n'en a pas non plus : c'est la page au repos.
@@ -504,6 +506,83 @@ seulement pour une arrivée à froid au repos, retirée au premier scroll et
 jamais pour un retour de plongée ni sous un outil. `src/utils/icon.js`
 sérialise un nœud lucide en SVG pour les deux usages ; `lucide` (vanilla) est
 la seule dépendance ajoutée. index.html (v1, gelé) garde sa légende.
+
+### Le chemin de la caméra : un seul lacet, une seule montée (2026-09-09, soir)
+
+Alexandre a décrit deux passages qu'il ne peut pas accepter, en termes de
+passager : « comme dans un avion de ligne, il ne doit pas renverser son verre
+d'eau presque plein ». À la sortie du tunnel, la caméra « se retourne, continue
+un peu vers l'arrière du logo, se reprend, repart dans la bonne direction, puis
+monte d'un cran avant de continuer son ascension ». Et sur l'approche, après le
+menu, « trop d'angles, trop de mouvements brusques », rendus plus aigus par un
+scroll rapide. Ce qu'il veut : après le tunnel, une caméra qui monte tout droit
+en se retournant sur elle-même, et retrouve la page en face d'elle au repos.
+
+**Le relevé d'abord.** La caméra de rendu a été échantillonnée sur toute la
+boucle (400 pas ; azimut du regard, élévation, roulis) et les deux plaintes
+sont apparues telles quelles dans les nombres.
+
+À la sortie : le balayage tournait **à droite** (« le grand tour par −X, pour
+que l'escalier entre par la droite ») vers une cible qui est le regard VIVANT
+de l'orbite — et l'orbite tourne à gauche. La caméra tournait donc 194° pour
+rattraper une cible qui reculait, puis revenait de 14° avec elle jusqu'à la
+pose +Z : **lacet 0 → 194° → 180°**, et le roulis, qui suit le taux de lacet,
+changeait de signe dans le retour : **−30° → 0 → +3° → 0**. Ensuite, LAND
+posait la caméra sur l'orbite à 12° d'élévation, tenue à plat pendant 50vh,
+et la rampe de retour (12° → 35°) ne partait qu'à progress 0,89. Une montée,
+un palier, une montée : le « cran ».
+
+Sur l'approche : ALIGN roulait un bezier de soixante unités monde jusqu'au
+parking en visant la marque depuis là où il passait. Or la caméra est
+**orthographique** sur ce tronçon : une position ne montre rien d'elle-même,
+seuls les deux angles du regard et le centre du cadre se voient. Ce que ça
+donnait : un taux de lacet qui tombait au tiers de celui de l'orbite, remontait
+au double, et s'annulait en 36vh ; la marque qui dérivait d'une demi-hauteur de
+cadre (NDC y 0,48 à progress 0,3) avant de revenir ; et un roulis de
+0 → 7° → 4° → 20° → 0 par-dessus, le tout en 240vh.
+
+**Ce qui a changé, dans `Scene.js` :**
+
+| | Avant | Après |
+|---|---|---|
+| Sens du balayage | à droite, « le grand tour » | **à gauche, le sens de l'orbite** — `dAz` replié dans (−2π, 0], jamais le demi-tour le plus court (la cible passe par 180° et ne doit pas basculer) |
+| Cible du balayage | regard vivant de l'orbite, mais centre = la marque, cadre = zoom 1,75 | regard, **ligne de centre et hauteur de cadre vivants** de l'orbite — le balayage atterrit sur ce que l'orbite dessine à LAND, quoi que fasse sa rampe |
+| Rampe de retour de l'orbite | miroir de la rampe de départ, à partir de 0,89 | `TRAVEL_RETURN` : part dès que la perspective est drainée (progress 0,794), `travelReturn` ajouté **à côté** dans `orbitPose` — `index.html` ne le passe jamais |
+| Fondu du roulis avant LAND | 0,03 de l'étape (24vh pour 11°) | `EDGE_OUT` 0,15 (un dixième de la boucle) |
+| ALIGN | bezier + regard épinglé + roulis | écrit **dans l'image** : lacet qui part au taux de l'orbite et décélère une fois, C2, sur le cap de l'axe (`rampTo` à l'envers) ; tangage 12° → 0 en une quintique ; centre du cadre de la marque au parking en une quintique ; position dérivée (centre − regard × rayon de l'orbite), donc exactement celle de l'orbite en h = 0. **Aucun roulis** : c'est le virage de l'orbite qui s'éteint, et l'orbite ne s'incline pas |
+| Chargement du balayage | 0,37 du virage sur 0,20 de la fenêtre, genou 1,1 | re-mesuré pour la gauche (l'escalier entre à wS ≈ 0,44) et adouci : 0,44 sur 0,30, genou 1,3 — pic 2,4× la moyenne au lieu de 3,0, pire chute de taux 0,96 au lieu de 1,75 |
+
+La grue (`LIFT` / `PUSH`) reste : sans elle, le drain recule la caméra le long
+de la paroi −X du solide à 0,17 unité (modèle hors navigateur, mêmes nombres
+que la scène), et avec le virage à gauche elle ne pousse plus le sujet hors du
+cadre sur la mise en page large. Le sujet entre par la gauche à progress 0,73,
+glisse au centre, et rétrécit de façon monotone jusqu'au repos.
+
+**Mesuré après, même relevé :** à la sortie, lacet monotone de 0° à −360°
+(la pose de repos), roulis 0 → 28° (h 0,68) → 0 à LAND sans changement de
+signe, élévation 0 → −12° (balayage) → −35,26° (repos) **sans palier** —
+le taux d'élévation vaut −0,38°/pas de part et d'autre de LAND. Sur
+l'approche, roulis nul partout, lacet 0,90 → 1,16 → 0 °/pas en une bosse,
+élévation 0,28°/pas au plus, et le profil de flux entre 0,20 et 0,40 tombe de
+`6,3 3,1 5,0 5,2 2,9 2,6 3,5 4,2 1,2` à `3,7 3,5 4,2 3,4 2,7 2,0 1,4 0,4 0,6`.
+La jauge d'accélération n'a plus rien du voyage dans ses huit pics hormis le
+conduit ; le genou du balayage (8,5, 2,4× la croisière, deuxième de la liste
+après le premier passage) a disparu.
+
+**Ce qui se paie, à dire :** l'escalier revient à progress 0,73 au lieu de
+0,67 (+65vh de ciel après le couloir — la géométrie du virage à gauche : le
+solide est derrière-gauche à la sortie, il faut 75° de lacet pour l'avoir dans
+le cadre), et la jauge de flux marque `FAIL` sur le même pas qu'avant, à la
+porte (21,9 en absolu, inchangé) : la croisière médiane est descendue de 4,19
+à 3,52 parce que le reste du film s'est calmé, et 21,9 / 3,52 = 6,23. Le
+budget est relatif ; l'à-coup, lui, n'a pas bougé. Contrôle du repos : PASS,
+identique à l'octet.
+
+**Deux leçons pour le prochain virage.** Un balayage qui poursuit une cible
+mobile doit tourner **dans le sens de la cible**, sinon il la dépasse et
+revient ; et tant que la caméra est orthographique, une animation s'écrit sur
+les angles du regard et le centre du cadre, jamais sur une position — la
+position ne se voit pas, et les angles qu'elle induit ne se contrôlent pas.
 
 ### Le texte suit sa visibilité (v2)
 
