@@ -1,0 +1,223 @@
+{
+  "generatedAt": "2026-09-09T15:25:50.771Z",
+  "source": "sanity:yh5i5diw/production siteSettings.curation",
+  "photos": [
+    {
+      "slug": "teens-of-paris",
+      "title": "Teens of Paris",
+      "src": "/curation/teens-of-paris.jpg",
+      "width": 6356,
+      "height": 3133
+    },
+    {
+      "slug": "along-the-wall-1",
+      "title": "Along the wall [1]",
+      "src": "/curation/along-the-wall-1.jpg",
+      "width": 5835,
+      "height": 3890
+    },
+    {
+      "slug": "parking-bike",
+      "title": "Parking Bike",
+      "src": "/curation/parking-bike.jpg",
+      "width": 4000,
+      "height": 5333
+    },
+    {
+      "slug": "orthodox",
+      "title": "Orthodox",
+      "src": "/curation/orthodox.jpg",
+      "width": 4000,
+      "height": 2252
+    },
+    {
+      "slug": "composition-of-shapes",
+      "title": "Composition of shapes",
+      "src": "/curation/composition-of-shapes.jpg",
+      "width": 4337,
+      "height": 2720
+    },
+    {
+      "slug": "lavomatic",
+      "title": "Lavomatic",
+      "src": "/curation/lavomatic.jpg",
+      "width": 3920,
+      "height": 5227
+    },
+    {
+      "slug": "shadow-repetition",
+      "title": "Shadow Repetition",
+      "src": "/curation/shadow-repetition.jpg",
+      "width": 2613,
+      "height": 3919
+    },
+    {
+      "slug": "2026-paris-run",
+      "title": "Run",
+      "src": "/curation/2026-paris-run.jpg",
+      "width": 2048,
+      "height": 1365
+    },
+    {
+      "slug": "hocine-s-house",
+      "title": "Hocine's house",
+      "src": "/curation/hocine-s-house.jpg",
+      "width": 4608,
+      "height": 3072
+    },
+    {
+      "slug": "2026-paris-dalle-du-13eme",
+      "title": "Dalle du 13ème",
+      "src": "/curation/2026-paris-dalle-du-13eme.jpg",
+      "width": 3845,
+      "height": 5126
+    },
+    {
+      "slug": "nicolas",
+      "title": "Nicolas",
+      "src": "/curation/nicolas.jpg",
+      "width": 2557,
+      "height": 3450
+    },
+    {
+      "slug": "djerba-station-shell-day-2",
+      "title": "Djerba Station Shell Day [2]",
+      "src": "/curation/djerba-station-shell-day-2.jpg",
+      "width": 3456,
+      "height": 4608
+    },
+    {
+      "slug": "godly-birds",
+      "title": "Godly Birds",
+      "src": "/curation/godly-birds.jpg",
+      "width": 3198,
+      "height": 4308
+    },
+    {
+      "slug": "mariya-metro-station",
+      "title": "Mariya metro station",
+      "src": "/curation/mariya-metro-station.jpg",
+      "width": 1536,
+      "height": 2048
+    },
+    {
+      "slug": "sunken-boat",
+      "title": "Sunken Boat",
+      "src": "/curation/sunken-boat.jpg",
+      "width": 4589,
+      "height": 3059
+    },
+    {
+      "slug": "2026-paris-loubards-du-13",
+      "title": "Loubards du 13",
+      "src": "/curation/2026-paris-loubards-du-13.jpg",
+      "width": 2048,
+      "height": 1365
+    },
+    {
+      "slug": "2026-moscow-topo-heater",
+      "title": "Topo heater",
+      "src": "/curation/2026-moscow-topo-heater.jpg",
+      "width": 1536,
+      "height": 2048
+    },
+    {
+      "slug": "tri-umbrella",
+      "title": "Tri Umbrella",
+      "src": "/curation/tri-umbrella.jpg",
+      "width": 5309,
+      "height": 3539
+    },
+    {
+      "slug": "lavage-a-l-hydrojet-1",
+      "title": "Lavage à l'hydrojet [1]",
+      "src": "/curation/lavage-a-l-hydrojet-1.jpg",
+      "width": 3920,
+      "height": 5227
+    },
+    {
+      "slug": "paris-15-orion55",
+      "title": "Orion55 [1]",
+      "src": "/curation/paris-15-orion55.jpg",
+      "width": 4000,
+      "height": 5333
+    },
+    {
+      "slug": "hi",
+      "title": "\"Hii\"",
+      "src": "/curation/hi.jpg",
+      "width": 6000,
+      "height": 4000
+    },
+    {
+      "slug": "central-bus-station",
+      "title": "Central Bus Station",
+      "src": "/curation/central-bus-station.jpg",
+      "width": 4074,
+      "height": 2716
+    },
+    {
+      "slug": "ghost-soul",
+      "title": "Ghost Soul",
+      "src": "/curation/ghost-soul.jpg",
+      "width": 3706,
+      "height": 2471
+    },
+    {
+      "slug": "orly-1",
+      "title": "Orly [1]",
+      "src": "/curation/orly-1.jpg",
+      "width": 4608,
+      "height": 3371
+    },
+    {
+      "slug": "tunisia-dogs",
+      "title": "Tunisian Dogs",
+      "src": "/curation/tunisia-dogs.jpg",
+      "width": 4608,
+      "height": 3072
+    },
+    {
+      "slug": "red-descent",
+      "title": "Red Descent",
+      "src": "/curation/red-descent.jpg",
+      "width": 6000,
+      "height": 4000
+    },
+    {
+      "slug": "2026-peredelkino-typewriter",
+      "title": "Typewriter",
+      "src": "/curation/2026-peredelkino-typewriter.jpg",
+      "width": 2048,
+      "height": 1365
+    },
+    {
+      "slug": "2020-paris-cyclist",
+      "title": "Cyclist",
+      "src": "/curation/2020-paris-cyclist.jpg",
+      "width": 1536,
+      "height": 2048
+    },
+    {
+      "slug": "2024-paris-amina",
+      "title": "Amina",
+      "src": "/curation/2024-paris-amina.jpg",
+      "width": 2048,
+      "height": 1366
+    },
+    {
+      "slug": "dystopia",
+      "title": "Dystopia",
+      "src": "/curation/dystopia.jpg",
+      "width": 5713,
+      "height": 3809
+    },
+    {
+      "slug": "horse-rider",
+      "title": "Horse Rider",
+      "src": "/curation/horse-rider.jpg",
+      "width": 4608,
+      "height": 3072
+    }
+  ]
+}

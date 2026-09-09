@@ -11,6 +11,7 @@
     "measure": "python3 tools/measure-glyph-ink.py",
     "shoot:v2": "node tools/shoot.mjs --url http://localhost:5180/v2.html --out tools/shots/v2 --pale",
     "bake": "python3 tools/bake-glyph-light.py",
+    "curation": "node tools/curation.mjs",
     "flow": "node tools/flow.mjs"
   },
   "dependencies": {
