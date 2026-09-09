@@ -30,6 +30,14 @@ import { ORBIT } from "./utils/utils";
  * before the first frame is painted, and the dive plays in reverse until the
  * camera is back at the menu, square on to the steps, with the scroll handed
  * over exactly where the orbit says the step view lives.
+ *
+ * THE GALLERY IS THE SECOND DOOR TO THE SAME PLACE. Inside the tunnel every
+ * photograph is a link to the portfolio, and it uses the dive's whole
+ * machinery with one leg removed: there is no somersault to rewind, so the
+ * record carries the position on the plateau instead of a step, and the return
+ * puts the visitor back in the corridor in front of the picture they clicked.
+ * The veil is white here too — and for the same reason, not by coincidence:
+ * the portfolio opens on a white screen.
  */
 const DESTINATIONS = {
 	agency: { url: "https://www.aaxlo.com", veil: "#1e1e1e" },
@@ -44,6 +52,20 @@ const DESTINATIONS = {
 const CLICKABLE_FROM = 0.5;
 /** The veil fades over the tail of the dive, once the tread fills the frame. */
 const VEIL_FROM = 0.62;
+/**
+ * Seconds the white-out takes when a photograph is clicked. There is no dive
+ * to hide behind here — the tunnel simply whitens into the portfolio's own
+ * first frame — so the veil owns the whole cut, and half a second is the
+ * length at which it reads as a cut rather than as a wait.
+ */
+const GALLERY_VEIL = 0.5;
+/**
+ * How long the return from a photograph will hold its veil waiting for the 31
+ * textures. Past that it lifts anyway: the photographs fade in on their own as
+ * they land, and a visitor who came back with a cold cache should not be shown
+ * a white rectangle for four seconds to spare them an empty corridor for one.
+ */
+const RETURN_PATIENCE = 1500;
 /**
  * Survives the trip to the destination and back, which is the whole point:
  * sessionStorage is per-tab and outlives a cross-origin round trip, so the
@@ -78,21 +100,76 @@ document.addEventListener("DOMContentLoaded", () => {
 	const items = [...document.querySelectorAll(".step-menu__item")];
 	let navigatedTo = null;
 
+	/** Runs `fn` once the browser has actually painted the state set just now. */
+	const afterFrame = (fn) =>
+		requestAnimationFrame(() => requestAnimationFrame(fn));
+
 	/**
 	 * Come back into the page at the far end of a dive and play it backwards.
 	 * The veil is raised SYNCHRONOUSLY, before anything else: on a cold load
 	 * the scene needs a moment to rasterize the page and the first frames
 	 * would otherwise flash the rest pose — the flat page — which is the one
 	 * thing the return must not show.
+	 *
+	 * A record carrying `gallery` came from a photograph, not from a step, so
+	 * there is nothing to rewind: the veil comes down onto the corridor the
+	 * visitor left, at the position on the plateau they left it at.
 	 */
 	const playReturn = (record) => {
 		if (!record || !DESTINATIONS[record.dest]) return;
+		// The click set a transition on this element to fade the white in. It
+		// must be off for the return, or the veil would fade UP from nothing
+		// and show the very frames it exists to hide.
+		veil.style.transition = "none";
 		veil.style.background = DESTINATIONS[record.dest].veil;
 		veil.style.opacity = "1";
+		navigatedTo = null;
+		if (typeof record.gallery === "number") {
+			returnToGallery(record.gallery);
+			return;
+		}
 		three.progressOverride = ORBIT.STEPS;
 		three.lenis?.stop();
 		three.scene.rewindDive(record.step);
 	};
+
+	/**
+	 * Put the scroll back inside the tunnel. The override holds the picture on
+	 * the plateau while the scene assembles — the scroll cannot be placed until
+	 * Lenis knows how long the page is, and on a cold load that is several
+	 * frames away.
+	 */
+	function returnToGallery(t) {
+		three.galleryOverride = t;
+		three.lenis?.stop();
+		const since = performance.now();
+
+		const land = () => {
+			const ready = document.documentElement.dataset.sceneReady === "true";
+			const patient = performance.now() - since < RETURN_PATIENCE;
+			if (!ready || !three.lenis?.limit) return requestAnimationFrame(land);
+			// Waiting on the textures is worth a beat and not more: see
+			// RETURN_PATIENCE.
+			if (patient && !three.galleryView?.ready) return requestAnimationFrame(land);
+
+			three.lenis.start();
+			three.lenis.scrollTo(three.scrollForGallery(t), {
+				immediate: true,
+				force: true,
+			});
+			// One frame between placing the scroll and dropping the override:
+			// Lenis publishes its new position on the next raf, and clearing
+			// the pin in the same tick would draw one frame of the wrong place.
+			afterFrame(() => {
+				three.galleryOverride = null;
+				afterFrame(() => {
+					veil.style.transition = `opacity ${GALLERY_VEIL}s ease`;
+					veil.style.opacity = "0";
+				});
+			});
+		};
+		requestAnimationFrame(land);
+	}
 
 	for (const item of items) {
 		item.addEventListener("click", () => {
@@ -126,6 +203,73 @@ document.addEventListener("DOMContentLoaded", () => {
 		});
 	}
 
+	/* ------------------------------------------------- the gallery's photos */
+
+	// The canvas and #app are pointer-events: none by design, so the window is
+	// where the pointer actually is. Nothing here touches that.
+	let pointer = null;
+	let hovered = null;
+	let cursor = "";
+
+	const toNdc = (event) => ({
+		// scene.width / height, not innerWidth: the scene measures itself in
+		// lvw/lvh, and on mobile Safari innerHeight is the collapsing one.
+		x: (event.clientX / three.scene.width) * 2 - 1,
+		y: -(event.clientY / three.scene.height) * 2 + 1,
+	});
+
+	// Half a fade is where the tunnel is more present than the logo. Below it
+	// a photograph is a ghost, and a ghost must not be clickable.
+	const galleryLive = () =>
+		Boolean(three.galleryView) &&
+		three.gallery.active &&
+		three.galleryView.fade > 0.5 &&
+		!three.scene.dive &&
+		!navigatedTo;
+
+	window.addEventListener("pointermove", (event) => {
+		pointer = toNdc(event);
+	});
+	window.addEventListener("pointerleave", () => {
+		pointer = null;
+	});
+
+	window.addEventListener("click", (event) => {
+		if (!galleryLive()) return;
+		const at = toNdc(event);
+		if (!three.galleryView.pick(at.x, at.y)) return;
+
+		const dest = DESTINATIONS.photography;
+		// Someone who asked for less motion gets the portfolio, not the fade.
+		if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
+			window.location.assign(dest.url);
+			return;
+		}
+
+		navigatedTo = dest.url;
+		three.lenis?.stop();
+		veil.style.background = dest.veil;
+		try {
+			// No step, so no dive to rewind on the way back — the position on
+			// the plateau is the whole record. scrollForGallery turns it back
+			// into a scroll offset when the visitor returns.
+			sessionStorage.setItem(
+				RETURN_KEY,
+				JSON.stringify({ dest: "photography", gallery: three.gallery.t }),
+			);
+		} catch {
+			// Private mode, quota, whatever: the visit still happens, only the
+			// return is ordinary. Never a reason not to go.
+		}
+		veil.style.transition = `opacity ${GALLERY_VEIL}s ease`;
+		afterFrame(() => {
+			veil.style.opacity = "1";
+			// Armed only once the fade has actually started, or the navigation
+			// would land while the white is still a third of the way up.
+			setTimeout(() => window.location.assign(dest.url), GALLERY_VEIL * 1000);
+		});
+	});
+
 	// Restored from the back/forward cache: no DOMContentLoaded fires, the
 	// scene is alive and still parked at the end of its dive, so this only
 	// has to turn it around. persisted is false on the very first load, where
@@ -155,6 +299,22 @@ document.addEventListener("DOMContentLoaded", () => {
 			el.style.opacity = menuOpacity.toFixed(3);
 			el.style.pointerEvents =
 				!dive && step.onScreen && facing > CLICKABLE_FROM ? "auto" : "none";
+		}
+
+		// The hover is resolved HERE rather than on pointermove: the corridor
+		// travels under a pointer that is standing still, so the photograph it
+		// is over is a fact about this frame, not about the last mouse event.
+		const over = galleryLive() && pointer
+			? three.galleryView.pick(pointer.x, pointer.y)
+			: null;
+		if (over !== hovered) {
+			hovered = over;
+			three.galleryView?.setHover(over);
+			const want = over ? "pointer" : "";
+			if (want !== cursor) {
+				cursor = want;
+				document.body.style.cursor = want;
+			}
 		}
 
 		if (dive) {
