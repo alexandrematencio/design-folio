@@ -218,12 +218,14 @@ document.addEventListener("DOMContentLoaded", () => {
 		y: -(event.clientY / three.scene.height) * 2 + 1,
 	});
 
-	// Half a fade is where the tunnel is more present than the logo. Below it
-	// a photograph is a ghost, and a ghost must not be clickable.
+	// `live` is the corridor's own answer to "am I the picture right now?" —
+	// true on the plateau, false through the door on the approach (where the
+	// cobalt occludes the photographs and a raycast would not know) and false
+	// under the exit veil. A photograph that is not the picture is a ghost,
+	// and a ghost must not be clickable.
 	const galleryLive = () =>
 		Boolean(three.galleryView) &&
-		three.gallery.active &&
-		three.galleryView.fade > 0.5 &&
+		three.galleryView.live &&
 		!three.scene.dive &&
 		!navigatedTo;
 

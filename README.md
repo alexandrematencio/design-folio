@@ -77,6 +77,7 @@ distance au repos. Deux poses sur ce cercle portent tout le poids :
 | `0.125` | **marches** — azimut 90°, élévation 12° | les trois contremarches pile de face, empilées, séparées par les marches en blanc. C'est la vue du menu |
 | `0.625` | **arrière** | le solide vu de dos |
 | `0.2 → 0.875` | **la traversée** (v2) | juste après le menu, la ligne quitte l'orbite et passe dans le trou du solide — voir « La traversée du trou » |
+| `0.62746` | **la porte** (v2) | le progress s'arrête là pendant 750vh : la caméra vient de franchir le plan de sortie et le couloir des Selected Works prend la route — voir « La porte, et le couloir » |
 
 Ce sont des conséquences de la géométrie, pas des choix : les trois
 contremarches du solide regardent toutes +X (mesuré : x = 0, +1, +2 aux hauteurs
@@ -210,10 +211,55 @@ panoramique de 166° est incompressible ; le reveal shippé de v1 tourne à
 4×) : c'est le plafond accepté de la jauge, resserrable avec `--budget 3`.
 
 Et parce que la seule façon honnête de ralentir un film piloté au scroll est
-d'allonger la route, **v2 roule sur 1200vh** (contre 800 pour v1, inline dans
-v2.html) : une boucle demande moitié plus de molette, tout le voyage respire
-d'autant. Le repos aimante toujours légèrement (`#maybeSnap`, v2 seulement),
-et tout reste une fonction pure du scroll : marche arrière gratuite.
+d'allonger la route, **v2 roule sur 1200vh** de voyage (contre 800 pour v1),
+plus 750vh de plateau pour la galerie — 1950 en tout, inline dans v2.html.
+Le repos aimante toujours légèrement (`#maybeSnap`, v2 seulement), et tout
+reste une fonction pure du scroll : marche arrière gratuite.
+
+### La porte, et le couloir des Selected Works (v2)
+
+Le conduit du logo s'arrête sur un plan de sortie. **Le couloir blanc commence
+exactement là** et continue tout droit : même origine, même axe, même section
+carrée, même ligne de roulage, construits dans le repère du glyph
+(`boreFrame()`). Les deux volumes ne partagent pas un pouce cube, donc il n'y a
+rien à fondre. On roule dans le cobalt, on franchit une porte, on roule dans le
+papier quadrillé — la matière change là où la géométrie change.
+
+C'est pour ça que **l'approche est rendue dans le z-buffer du logo**, avec sa
+caméra de rendu et sans effacer la profondeur (`Three.#render`, passe
+`through`). Depuis l'intérieur d'un tube convexe, le couloir ne peut se
+projeter QUE dans le rectangle de sortie : il remplace exactement ce que ce
+rectangle montrait — le cyclorama — et rien d'autre. La première version
+faisait l'inverse (deux tunnels dans le même volume, fondus l'un dans l'autre,
+profondeur jetée entre les passes) et ça ne pouvait pas se lire comme un
+passage : c'était une double exposition.
+
+Le plateau s'ouvre quand la caméra a **franchi la porte**, pas avant :
+`PLATEAU` est résolu, pas choisi — `progressPastExit(0.1)` inverse l'easing de
+`TRAVERSE` par dichotomie et rend `0.62746` (h = 0.63327 ; le plan de sortie
+est croisé à h = 0.62691). Et la caméra du couloir **part à la vitesse du
+conduit à cet endroit** : 14,3 largeurs de conduit par unité de h, soit 0,735
+de la croisière du couloir, parce que `TRAVERSE` freine sur sa fin. La rampe
+qui rejoint la croisière est intégrée en forme close, et la croisière est
+résolue pour que le trajet fasse toujours exactement 18 largeurs (`travelOf`,
+Gallery.js). C1 à la couture : ni la position ni la vitesse ne trahissent le
+changement de scène.
+
+La sortie est **blanche sur blanche** : sur les derniers 10 % du trajet le
+treillis s'éteint et il ne reste que du papier ; sur les derniers 6 % du
+plateau la scène du logo est rendue dessous (caméra à la porte, face au
+cyclorama) pendant que l'opacité du papier tombe à zéro. Rien ne bouge à
+l'écran, donc l'arrêt de la caméra pendant ce fondu ne se voit pas. En marche
+arrière, le papier se lève, le treillis se rallume, on repasse la porte à
+reculons dans le cobalt.
+
+La jauge suit : `tools/flow.mjs` échantillonnait le progress, or le plateau est
+750vh où le progress ne bouge pas — depuis que le couloir est visible pendant
+l'approche, ça mettait côte à côte deux images séparées par 750vh et appelait
+ça un pas (9× la croisière mesurés, pour une coupe qui n'existe pas). La jauge
+parcourt maintenant le plateau sur son propre axe, avec le nombre de pas qui
+fait **la même molette par pas** sur les deux axes : 251 pas, médiane 6,2,
+pic 3,5× la croisière du voyage.
 
 ### Le texte suit sa visibilité (v2)
 
@@ -249,6 +295,7 @@ src/
   core/Three.js              boucle rAF, Lenis, resize débounce
   core/WebGLContext.js       renderer, canvas, espace colorimétrique
   scenes/Scene.js            caméras, composition, éclairage, matériaux
+  scenes/Gallery.js          le couloir des Selected Works : la porte, le plateau
   utils/HtmlToCanvas.js      DOM → <canvas> via SVG foreignObject
   utils/collectDocumentCss.js aplatit le CSS et inline TOUTES les url()
   utils/ProjectedMaterial.js patch onBeforeCompile : la projection + uLitness
@@ -259,6 +306,8 @@ src/
   main.js / main-v2.js       les deux points d'entrée : la règle d'encrage, un mot
 tools/
   shoot.mjs                  frames déterministes + contrôle du repos
+  flow.mjs                   la jauge de flux optique (voyage + plateau)
+  curation.mjs               bake des photos de la curation dans public/
   measure-glyph-ink.py       la mesure qui fixe GLYPH_INK
   bake-glyph-light.py        ce que chaque face voit de la pièce → .light.json
 ```

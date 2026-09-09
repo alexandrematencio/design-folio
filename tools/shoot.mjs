@@ -56,12 +56,20 @@ const OUT = path.join(ROOT, args.out ?? "tools/shots");
 // square on at 0.125, the back at 0.625) and two points in between.
 const FRAMES = [0, 0.02, 0.04, 0.07, 0.125, 0.3, 0.5, 0.625];
 
-// --gallery: the plateau, sampled where the answers are. The two crossfades
-// get three frames each because they are the only place this page can fail
-// invisibly — g002 and g098 must show the cobalt bore and the white tunnel
-// with the SAME four edges, or the seam is not a seam. g050 is the middle of
-// the ride, where the four walls must all be carrying photographs.
+// --gallery: the plateau, sampled where the answers are. g002 is the first
+// step past the door — the conduit must be behind and the frame all corridor.
+// g050 is the middle of the ride, where the four walls must all be carrying
+// photographs. g094..g098 is the exit veil: the lattice out, then paper
+// thinning onto the cyclorama, and nothing moving through either.
 const GALLERY_FRAMES = [0.02, 0.06, 0.1, 0.5, 0.9, 0.94, 0.98];
+
+// The APPROACH, in progress rather than plateau position: the door seen from
+// inside the conduit. h = 0.58 and 0.61 of the journey's leg (JOURNEY.FROM +
+// h × 0.675), where the camera is 0.07 and 0.90 bore widths past the bore's
+// centre — cobalt walls all round, the corridor carrying on through the exit
+// rectangle. This is the frame the whole rewrite exists for: one picture, one
+// depth, no ghost.
+const DOOR_FRAMES = [0.5915, 0.61175];
 
 const BRAND = {
 	paper: [250, 250, 248],
@@ -308,9 +316,9 @@ try {
 	/* ------------------------------------------------------------- gallery */
 
 	if (args.gallery) {
-		// The tunnel is built lazily, off a camera that has to be ON the
-		// plateau first — so pin the override, let a frame build it, and only
-		// then ask for the textures. Asking first would arm an empty tunnel.
+		// The corridor is built lazily, on the first frame it is asked for —
+		// so pin the override, let a frame build it, and only then ask for the
+		// textures. Asking first would arm an empty corridor.
 		await page.evaluate(async () => {
 			window.__three.galleryOverride = 0.5;
 			for (let i = 0; i < 3; i++) {
@@ -335,11 +343,27 @@ try {
 			const name = `g${String(Math.round(t * 100)).padStart(3, "0")}.png`;
 			await page.screenshot({ path: path.join(OUT, name) });
 		}
+		// The approach: the plateau override off, the progress one on, so the
+		// journey's own camera draws and the corridor rides its depth buffer.
 		await page.evaluate(() => {
 			window.__three.galleryOverride = null;
 		});
+		for (const p of DOOR_FRAMES) {
+			await page.evaluate(async (v) => {
+				window.__three.progressOverride = v;
+				for (let i = 0; i < 6; i++) {
+					await new Promise((r) => requestAnimationFrame(r));
+				}
+			}, p);
+			const h = (p - 0.2) / 0.675;
+			const name = `door${String(Math.round(h * 100)).padStart(3, "0")}.png`;
+			await page.screenshot({ path: path.join(OUT, name) });
+		}
+		await page.evaluate(() => {
+			window.__three.progressOverride = null;
+		});
 		console.log(
-			`wrote ${GALLERY_FRAMES.length} gallery frames to ${path.relative(ROOT, OUT)}`,
+			`wrote ${GALLERY_FRAMES.length + DOOR_FRAMES.length} gallery frames to ${path.relative(ROOT, OUT)}`,
 		);
 	}
 

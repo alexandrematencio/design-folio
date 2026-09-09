@@ -268,7 +268,7 @@ const TUNNEL = {
  * Everything remains a PURE FUNCTION of the scroll: no state, no
  * integration; scroll backward and the film plays in reverse for free.
  */
-const JOURNEY = {
+export const JOURNEY = {
 	FROM: 0.2, // the leg begins here — just past the menu's fade window
 	TO: 0.875, // and ends ON the orbit: azimuth 315, the +Z side. Geometry.
 	// Phases, fractions of the leg. Sequential on purpose (see above).
@@ -336,6 +336,61 @@ const JOURNEY = {
 	LOOK: 1.8, // gaze lead along the axis (x s); also the spiral's start radius
 	EXIT_OVER: 0.3, // how far past the exit plane the traverse rolls (x s)
 	PARK: 6, // where ALIGN parks on the axis (local z units before the mouth)
+};
+
+const LEG = JOURNEY.TO - JOURNEY.FROM;
+
+/** The leg's own clock, both ways. h runs 0..1 from JOURNEY.FROM to TO. */
+export const journeyH = (progress) => (progress - JOURNEY.FROM) / LEG;
+export const journeyProgress = (h) => JOURNEY.FROM + h * LEG;
+
+/**
+ * THE RIDE, WRITTEN ONCE — where the camera stands along the bore's axis
+ * during TRAVERSE, in GLYPH-LOCAL units measured from the bore's CENTRE (so
+ * the exit plane is +TUNNEL.halfLength and the mouth is -halfLength).
+ *
+ * #applyJourney lerps a world point between exactly these two ends, and
+ * ride(z) is an affine map of z, so lerping the depth and lerping the point
+ * are the same thing. It is spelled out here because the gallery needs to ask
+ * two questions that used to have no owner — WHERE is the door crossed, and
+ * HOW FAST is the camera going there — and a second copy of this arithmetic
+ * would drift the day the easing is touched, which is exactly the seam where
+ * the drift would show.
+ */
+export const traverseDepth = (h) => {
+	const kMax = Math.tan((JOURNEY.FOV * Math.PI) / 360);
+	const from = -TUNNEL.halfLength - JOURNEY.FRAME_MOUTH / (2 * kMax);
+	const to = TUNNEL.halfLength + JOURNEY.EXIT_OVER;
+	const [a, b] = JOURNEY.TRAVERSE;
+	return lerp(from, to, smoothstep(clamp((h - a) / (b - a))));
+};
+
+/**
+ * The progress at which the ride stands `over` bore widths PAST the exit
+ * plane. Bisection rather than an inverted smoothstep: the depth is monotone
+ * across TRAVERSE, forty halvings land on the float, and the day the easing
+ * changes shape this keeps answering instead of quietly lying.
+ */
+export const progressPastExit = (over) => {
+	const target = TUNNEL.halfLength + over;
+	let [lo, hi] = JOURNEY.TRAVERSE;
+	for (let i = 0; i < 40; i++) {
+		const mid = (lo + hi) / 2;
+		if (traverseDepth(mid) < target) lo = mid;
+		else hi = mid;
+	}
+	return journeyProgress((lo + hi) / 2);
+};
+
+/**
+ * How fast the ride runs there, in bore widths per unit of PROGRESS. Central
+ * difference, because TRAVERSE eases out on its end and the number that
+ * matters at the door is the one the easing has left, not the cruise.
+ */
+export const rideRate = (progress) => {
+	const e = 1e-4;
+	const h = journeyH(progress);
+	return (traverseDepth(h + e) - traverseDepth(h - e)) / (2 * e) / LEG;
 };
 
 /* ------------------------------------------------------------------- scene */
@@ -955,10 +1010,11 @@ export default class Scene {
 	 * THE BORE, IN WORLD SPACE — the one place that maths is written.
 	 *
 	 * #applyJourney built these lambdas inline; the gallery (scenes/Gallery.js)
-	 * needs the very same frame, because its whole trick is that its white
-	 * tunnel IS the bore: same origin, same axis, same square section, same
-	 * ride line. Two copies of this arithmetic would drift the day either one
-	 * is touched, and the seam of the crossfade is where that drift would show.
+	 * needs the very same frame, because its white corridor is the bore
+	 * CONTINUED: same origin, same axis, same square section, same ride line,
+	 * starting at the bore's exit plane and running on. Two copies of this
+	 * arithmetic would drift the day either one is touched, and the door is
+	 * exactly where that drift would show as a step in the wall.
 	 *
 	 * Lengths come back in GLYPH-LOCAL units (bore, halfLength, rideDrop) with
 	 * `s` alongside; points come back in world.
@@ -993,7 +1049,6 @@ export default class Scene {
 			bore: TUNNEL.bore,
 			halfLength: TUNNEL.halfLength,
 			rideDrop: JOURNEY.RIDE_DROP,
-			camera: this.perspCamera,
 		};
 	}
 
@@ -1130,10 +1185,10 @@ export default class Scene {
 			// TRAVERSE: constant heading down the axis, the exit growing
 			// dead ahead — perspective does the talking. Eased at both ends:
 			// a breath at the mouth going in, one past the exit coming out.
-			const start = mouth
-				.clone()
-				.addScaledVector(axisDir, -(JOURNEY.FRAME_MOUTH * s) / (2 * kMax));
-			pos = start.lerp(axisEnd, win(h, JOURNEY.TRAVERSE));
+			// The depth is traverseDepth(h) and nothing else: the gallery
+			// solves that same function for the door, so the two agree by
+			// construction rather than by two numbers kept in step by hand.
+			pos = ride(traverseDepth(h));
 			dir = axisDir.clone();
 		} else {
 			// SWEEP + MORPH_OUT: the passenger turn. The gaze direction

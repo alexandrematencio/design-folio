@@ -13,13 +13,23 @@
  * hard the worst moment differs from cruise. The budget printed at the end is
  * the pass bar the journey is held to.
  *
- * WHAT THIS TOOL DOES NOT SEE: the gallery. It samples progressOverride, and
- * the gallery plateau is a stretch of scroll where progress does not move at
- * all (galleryOverride is its own axis — see GALLERY in core/Three.js). That
- * is accepted rather than a gap: the gallery drives a straight line down a
- * periodic corridor at constant speed in t, so there is no transit to measure
- * and nothing that can lurch. Its two crossfades are judged by eye, on the
- * frames tools/shoot.mjs --gallery writes.
+ * THE PLATEAU IS ON THE SAME RULER. progress and scroll stopped being the same
+ * axis the day the gallery got a plateau — 750vh where progress stands still
+ * and galleryOverride runs instead (GALLERY in scenes/Gallery.js) — and since
+ * the corridor is now drawn during the APPROACH too, sampling progress alone
+ * would put two frames 750vh apart next to each other and call the difference
+ * one step. Measured, that lie was worth 9x cruise at p = PLATEAU, for a cut
+ * that does not exist.
+ *
+ * So the sweep runs progress up to PLATEAU, hands over to the plateau's own
+ * axis, and picks progress back up on the far side. The plateau gets
+ * VH / LOOP_VH x STEPS steps, which is exactly the count that makes ONE STEP
+ * THE SAME AMOUNT OF WHEEL on both axes — that is the only way the two sets of
+ * numbers may be compared, and comparing them is the whole point.
+ *
+ * `median` stays the JOURNEY's median, not the pooled one: it is the cruise
+ * the 6x budget was calibrated against, and folding 250 corridor steps into it
+ * would move the bar under every number ever recorded here.
  *
  *   npm run dev            # in another shell
  *   node tools/flow.mjs                       # v2, 400 steps
@@ -64,18 +74,64 @@ try {
 		{ timeout: 30000 },
 	);
 
+	// The corridor's photographs have to be on the walls before it is judged:
+	// an empty corridor is a much calmer picture than the real one, and the
+	// gauge would sign off on a ride nobody takes. No-op on v1.
+	await page.evaluate(async () => {
+		if (!window.__three.galleryView) return;
+		window.__three.galleryOverride = 0.5;
+		for (let i = 0; i < 3; i++) await new Promise((r) => requestAnimationFrame(r));
+		window.__three.galleryView.arm();
+	});
+	await page
+		.waitForFunction(() => !window.__three.galleryView || window.__three.galleryView.ready, {
+			timeout: 30000,
+		})
+		.catch(() => console.log("(the corridor's textures did not all arrive)"));
+
 	const rows = await page.evaluate(async (STEPS) => {
 		const three = window.__three;
 		three.paused = false;
+		three.galleryOverride = null;
 		const src = three.context.renderer.domElement;
 		const cv = document.createElement("canvas");
 		cv.width = 160;
 		cv.height = 100;
 		const cx = cv.getContext("2d", { willReadFrequently: true });
+
+		// The itinerary, in scroll order: progress up to the plateau, the
+		// plateau on its own axis, then progress again. `plateau` carries the
+		// same amount of wheel per step as the progress legs (see the header).
+		const plan = [];
+		const gv = three.galleryView;
+		const P = gv
+			? (await import("/src/scenes/Gallery.js")).GALLERY
+			: null;
+		const upTo = P ? P.PLATEAU : 2;
+		for (let i = 0; i <= STEPS; i++) {
+			const p = i / STEPS;
+			if (p > upTo) break;
+			plan.push({ leg: "journey", p });
+		}
+		if (P) {
+			const N = Math.round((P.VH / P.LOOP_VH) * STEPS);
+			for (let i = 0; i <= N; i++) plan.push({ leg: "plateau", t: i / N });
+			for (let i = 0; i <= STEPS; i++) {
+				const p = i / STEPS;
+				if (p > upTo) plan.push({ leg: "journey", p });
+			}
+		}
+
 		let prev = null;
 		const out = [];
-		for (let i = 0; i <= STEPS; i++) {
-			three.progressOverride = i / STEPS;
+		for (const step of plan) {
+			if (step.leg === "plateau") {
+				three.progressOverride = null;
+				three.galleryOverride = step.t;
+			} else {
+				three.galleryOverride = null;
+				three.progressOverride = step.p;
+			}
 			for (let k = 0; k < 3; k++)
 				await new Promise((r) => requestAnimationFrame(r));
 			cx.drawImage(src, 0, 0, cv.width, cv.height);
@@ -88,28 +144,41 @@ try {
 						Math.abs(d[j + 1] - prev[j + 1]) +
 						Math.abs(d[j + 2] - prev[j + 2]);
 				}
-				out.push({ p: i / STEPS, flow: sum / (cv.width * cv.height * 3) });
+				out.push({ ...step, flow: sum / (cv.width * cv.height * 3) });
 			}
 			prev = d.slice();
 		}
+		three.galleryOverride = null;
 		three.progressOverride = 0;
 		return out;
 	}, STEPS);
 
-	const sorted = rows.map((r) => r.flow).sort((a, b) => a - b);
+	const journey = rows.filter((r) => r.leg === "journey");
+	const plateau = rows.filter((r) => r.leg === "plateau");
+	const sorted = journey.map((r) => r.flow).sort((a, b) => a - b);
 	const median = sorted[sorted.length >> 1];
-	const max = rows.reduce((m, r) => (r.flow > m.flow ? r : m), rows[0]);
+	const worst = (set) => set.reduce((m, r) => (r.flow > m.flow ? r : m), set[0]);
+	const max = worst(journey);
 
-	console.log(`steps ${STEPS}  cruise (median) ${median.toFixed(3)}`);
+	console.log(`steps ${STEPS}  cruise (median of the journey) ${median.toFixed(3)}`);
 	console.log(
 		`worst ${max.flow.toFixed(3)} at p=${max.p.toFixed(3)}  (${(max.flow / median).toFixed(2)}x cruise)`,
 	);
+	if (plateau.length) {
+		const pm = plateau.map((r) => r.flow).sort((a, b) => a - b);
+		const pw = worst(plateau);
+		console.log(
+			`plateau ${plateau.length} steps  median ${pm[pm.length >> 1].toFixed(3)}  ` +
+				`worst ${pw.flow.toFixed(3)} at t=${pw.t.toFixed(3)}  ` +
+				`(${(pw.flow / median).toFixed(2)}x cruise)`,
+		);
+	}
 
 	// The profile, coarse: mean flow per 2.5 % of the loop, as a bar chart.
 	const BANDS = 40;
 	console.log("\nflow profile (each row = 1/40 of the loop):");
 	for (let b = 0; b < BANDS; b++) {
-		const band = rows.filter(
+		const band = journey.filter(
 			(r) => r.p > b / BANDS && r.p <= (b + 1) / BANDS,
 		);
 		const mean = band.reduce((t, r) => t + r.flow, 0) / (band.length || 1);
@@ -118,22 +187,37 @@ try {
 			`  ${(b / BANDS).toFixed(3)}  ${mean.toFixed(3)}  ${bar}`,
 		);
 	}
+	if (plateau.length) {
+		console.log("\nplateau profile (each row = 1/10 of the corridor):");
+		for (let b = 0; b < 10; b++) {
+			const band = plateau.filter((r) => r.t > b / 10 && r.t <= (b + 1) / 10);
+			const mean = band.reduce((t, r) => t + r.flow, 0) / (band.length || 1);
+			console.log(
+				`  ${(b / 10).toFixed(2)}  ${mean.toFixed(3)}  ${"#".repeat(Math.round((mean / median) * 8))}`,
+			);
+		}
+	}
 
 	// The PASS bar covers the journey and its approaches. The two bands
 	// hugging rest — the reveal (the page peeling off flatness, fast on
 	// purpose) and its mirror on the way home — are the shipped v1 orbit's
 	// own ramps, shared law in utils.js: reported above, not judged here.
+	// The plateau is judged whole: it sits inside the scope by construction.
 	const SCOPE = [0.12, 0.9];
 	const spikes = rows.filter(
-		(r) => r.p >= SCOPE[0] && r.p <= SCOPE[1] && r.flow > BUDGET * median,
+		(r) =>
+			r.flow > BUDGET * median &&
+			(r.leg === "plateau" || (r.p >= SCOPE[0] && r.p <= SCOPE[1])),
 	);
 	if (spikes.length) {
 		failed = true;
-		console.log(`\nFAIL — ${spikes.length} step(s) above ${BUDGET}x cruise in [${SCOPE}]:`);
+		console.log(`\nFAIL — ${spikes.length} step(s) above ${BUDGET}x cruise in [${SCOPE}] + plateau:`);
 		for (const sp of spikes.slice(0, 12))
-			console.log(`  p=${sp.p.toFixed(3)}  ${(sp.flow / median).toFixed(2)}x`);
+			console.log(
+				`  ${sp.leg === "plateau" ? `t=${sp.t.toFixed(3)}` : `p=${sp.p.toFixed(3)}`}  ${(sp.flow / median).toFixed(2)}x`,
+			);
 	} else {
-		console.log(`\nPASS — no step above ${BUDGET}x cruise in [${SCOPE}].`);
+		console.log(`\nPASS — no step above ${BUDGET}x cruise in [${SCOPE}] or on the plateau.`);
 	}
 } finally {
 	await browser.close();

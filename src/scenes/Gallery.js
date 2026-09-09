@@ -1,29 +1,42 @@
 import * as THREE from "three";
 import { clamp, lerp, smoothstep } from "../utils/utils";
+import { JOURNEY, journeyH, progressPastExit, rideRate } from "./Scene";
 
 /**
- * THE GALLERY — the Selected Works, hung inside the hole of the logo.
+ * THE GALLERY — the Selected Works, hung in the corridor BEYOND the hole.
  *
- * A SECOND scene, drawn by the same renderer with its own eye. Nothing is
- * added to the logo's scene, and nothing in the logo's scene knows this exists.
+ * A SECOND scene, drawn by the same renderer. Nothing is added to the logo's
+ * scene, and nothing in the logo's scene knows this exists.
  *
- * THE SEAM IS GEOMETRIC, NOT CHOREOGRAPHED. The bore of the glyph is a square
- * prism one unit across (TUNNEL in Scene.js). This tunnel is built in the SAME
- * world frame — same origin, same axis, same section, the glyph's own scale —
- * and its camera at t = 0 IS the journey's perspective camera at the plateau
- * progress: position, quaternion, fov and aspect, copied rather than
- * recomputed. So at the moment of the crossfade the four cobalt edges of the
- * bore and the four grey edges of the white tunnel land on the same pixels,
- * and the dissolve reads as the matter of the logo turning into paper. There
- * is not one line of stitching maths, and that is the point: a fade between
- * two pictures that already agree cannot be mistimed.
+ * THE SEAM IS A DOOR, NOT A DISSOLVE. The bore of the glyph is a square prism
+ * one unit across (TUNNEL in Scene.js) and it stops at a plane. This corridor
+ * starts EXACTLY at that plane and carries straight on: same origin, same
+ * axis, same square section, same ride line, built in the glyph's own world
+ * frame. The two never share a cubic inch, so there is nothing to fade. The
+ * visitor rolls through cobalt, crosses a door, and rolls on through paper —
+ * the matter changes where the geometry changes, and the camera never stops.
  *
- * THE EXIT SEAM IS THE SAME TRICK, PAID FOR BY PERIODICITY. At t = 1 the
- * camera is not back where it started — it is LENGTH further down the tunnel.
- * That is invisible because LENGTH is a whole number of lattice cells, the
- * photographs have all run out behind, and the fog closes the view long before
- * the geometry ends: the picture at t = 1 is the picture at t = 0. Scroll back
- * out and the logo is exactly where the visitor left it.
+ * WHICH IS WHY THE APPROACH IS DRAWN IN THE LOGO'S OWN Z-BUFFER, with the
+ * logo's own render camera and no depth clear (Three.#render). From inside a
+ * convex tube the corridor can only project INSIDE the exit rectangle, so it
+ * replaces precisely what that rectangle used to show — the cyclorama — and
+ * nothing else. The first cut of this file did the opposite: two tunnels in
+ * the same volume, cross-faded, depth thrown away between the passes. That
+ * cannot read as a passage, because it is a double exposure; the only thing
+ * two coincident tunnels can agree on is their four edges, and everything
+ * else (the exit's own hard border, the lattice printed over cobalt walls) is
+ * a ghost. That whole apparatus — FADE, the wall crossfade, the clearDepth —
+ * is gone.
+ *
+ * THE EXIT IS WHITE ON WHITE. Over the last OPEN of the trip the lattice goes
+ * out and the corridor is nothing but paper. Then over the last VEIL of the
+ * plateau the logo's scene is drawn UNDER it — its camera parked at the door,
+ * facing the white cyclorama — while the paper's opacity falls to zero. Two
+ * flat whites crossing: nothing on screen is moving, so the fact that the
+ * camera holds still for that beat cannot be seen. Then the plateau ends and
+ * the progress picks up again into the half-turn. Backwards it is the same
+ * film: the paper rises, the lattice relights, the visitor reverses up the
+ * corridor and back through the door into the cobalt.
  *
  * Reference: the Delphi home (delphi-three.vercel.app) — a lattice of
  * LineSegments rather than a texture, photographs laid flat on four walls.
@@ -64,17 +77,53 @@ const GRID = {
 	 * How far a photograph stands proud of its wall. The lattice does NOT get
 	 * one: it sits exactly on the plane of the bore and the paper behind it is
 	 * pushed back with a polygon offset instead. Insetting the lines by even
-	 * 0.003 moved the tunnel's four edges 1.6 px off the cobalt bore's at the
-	 * exit plane and more near the eye — measured — and those edges landing on
-	 * each other is the entire trick of the seam.
+	 * 0.003 moved the corridor's four edges 1.6 px off the cobalt bore's at
+	 * the exit plane and more near the eye — measured — and this wall IS the
+	 * cobalt one carried on, so any inset is a step in it at the door.
 	 */
 	INSET: 0.006,
 };
 
-/** Fraction of the plateau each crossfade owns, at both ends. */
-const FADE = 0.08;
+/**
+ * How far past the bore's exit plane the ride must stand, in bore widths, for
+ * the door to count as crossed and the plateau to open. Small on purpose: at
+ * 0.1 the conduit is behind the eye and the frame is all corridor, while the
+ * traverse — which eases OUT on its end — still has 43 % of its cruise left to
+ * hand over. Pushed to 0.2 the handover speed drops to 30 %, measured.
+ */
+const DOOR_OVER = 0.1;
+
+/**
+ * THE PLATEAU — the stretch of scroll where the orbit stands still and the
+ * corridor runs. v2.html's spacer carries LOOP_VH + VH and core/Three.js maps
+ * one onto the other (span() there); these are the numbers behind that map.
+ *
+ * PLATEAU is not a taste value, and no longer a hand-tuned one either: it is
+ * the progress at which the journey's camera has CROSSED THE DOOR. Solved,
+ * not guessed — progressPastExit inverts the traverse's own easing (Scene.js).
+ * At DOOR_OVER = 0.1 that lands on progress 0.62748, h = 0.63328, where the
+ * exit plane itself was crossed at h = 0.62691.
+ *
+ * VH follows from the corridor's length, not the other way round: it is 18
+ * bore widths long, and 750vh of wheel spends ~41vh on each of them — against
+ * ~57vh per bore width at the door and ~24vh mid-bore, so the corridor is a
+ * road the conduit accelerates onto and then settles from. All 750 go to the
+ * ride now; there is no entry fade left to pay for.
+ */
+export const GALLERY = {
+	LOOP_VH: 1200, // what v2.html's spacer was before the plateau
+	VH: 750, // what the plateau adds to it
+	PLATEAU: progressPastExit(DOOR_OVER),
+};
+
 /** Fraction of the traverse the eye takes to leave the ride line, and to rejoin it. */
 const RECENTRE = 0.1;
+/** Fraction of the trip the corridor takes to reach its own cruise speed. */
+const RAMP = 0.1;
+/** Fraction of the trip over which the corridor opens out: the lattice goes. */
+const OPEN = 0.1;
+/** Fraction of the plateau the exit veil owns: paper dissolving into room. */
+const VEIL = 0.06;
 /** Brand rule: a hover zoom never passes 1.04, and never comes with a caption. */
 const HOVER_SCALE = 1.03;
 /** Seconds a photograph takes to arrive once its texture is decoded. */
@@ -83,6 +132,39 @@ const ARRIVAL = 0.4;
 const CELL = 1 / GRID.CELLS;
 /** How far the camera travels between the two seams. A whole number of CELLs. */
 const LENGTH = (GRID.LEAD + (GRID.ROWS - 1) * GRID.PITCH + GRID.TAIL) * CELL;
+
+/**
+ * THE SPEED AT THE DOOR, in fractions of LENGTH per unit of t — the corridor's
+ * own units. This is not an ease anybody chose: it is C1 continuity across the
+ * seam, converted.
+ *
+ * The conduit's ride runs at rideRate(PLATEAU) bore widths per unit of
+ * PROGRESS. Below the plateau progress advances k per unit of raw scroll and t
+ * advances 1/g, and k × g is exactly VH / LOOP_VH — so the conversion is that
+ * ratio and a division by LENGTH, with the glyph's scale cancelling on both
+ * sides. Measured here: 0.735, because TRAVERSE is easing out at the door.
+ *
+ * The corridor therefore STARTS slower than its own cruise and catches up over
+ * RAMP. CRUISE is solved rather than set to 1, so that the ramp still delivers
+ * exactly LENGTH over the plateau: get that wrong and the far seam moves,
+ * which is the one place the periodicity of the lattice is load-bearing.
+ */
+const SEAM_SPEED =
+	(rideRate(GALLERY.PLATEAU) * (GALLERY.VH / GALLERY.LOOP_VH)) / LENGTH;
+/** ∫ of the ramp's smoothstep over the trip is 1 − RAMP/2; solve for area 1. */
+const CRUISE = (1 - (RAMP / 2) * SEAM_SPEED) / (1 - RAMP / 2);
+
+/**
+ * Distance travelled, as a fraction of LENGTH, at position `t` on the plateau.
+ * The integral of speed(t) = lerp(SEAM_SPEED, CRUISE, smoothstep(t / RAMP)),
+ * in closed form: ∫₀ᵘ smoothstep = u³ − u⁴/2, scaled by RAMP, then a straight
+ * run. travelOf(0) = 0 and travelOf(1) = 1 exactly, by the choice of CRUISE.
+ */
+const travelOf = (t) => {
+	const u = Math.min(t / RAMP, 1);
+	const area = RAMP * (u ** 3 - u ** 4 / 2) + Math.max(0, t - RAMP);
+	return SEAM_SPEED * t + (CRUISE - SEAM_SPEED) * area;
+};
 
 /**
  * The walls, in the order photographs take them. Each carries where it sits,
@@ -143,7 +225,17 @@ export default class Gallery {
 		this.root = new THREE.Group();
 		this.scene.add(this.root);
 
-		this.fade = 0;
+		/**
+		 * How this scene gets on screen THIS frame. Read by Three.#render.
+		 *   "through" — the approach: the logo's camera, the logo's depth
+		 *               buffer, no clear. Seen only through the exit hole.
+		 *   "solo"    — the plateau: this camera, paper clear, no logo pass.
+		 *   "veil"    — the exit: the logo's frame underneath, this over it.
+		 *   "none"    — not drawn.
+		 */
+		this.pass = "none";
+		/** True while a photograph in here is a link. See main-v2.js. */
+		this.live = false;
 		this.clearColour = new THREE.Color(PAPER);
 
 		/** curation.json, in curation order. Empty until the fetch lands. */
@@ -157,10 +249,11 @@ export default class Gallery {
 		this.hovered = null;
 		this.reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-		// The tunnel can only be built while the journey's camera is ON the
-		// plateau — its pose is the anchor everything is measured from, and at
-		// construction time it is still at the origin. So: build lazily, on the
-		// first frame the gallery is actually asked for.
+		// The corridor is built from boreFrame() alone — no camera in it any
+		// more — but the glyph is not placed yet at construction time, so the
+		// world frame it hangs on does not exist. Build lazily, on the first
+		// frame the corridor is actually asked for, which is now the approach
+		// and no longer the plateau.
 		this.dirty = true;
 		this.armed = false;
 		this.pending = 0;
@@ -191,40 +284,66 @@ export default class Gallery {
 	 * free. `delta` and `elapsed` feed only the two things that are NOT the
 	 * scroll: a texture arriving, and a pointer resting on a photograph.
 	 */
-	update({ t }, delta, elapsed) {
-		this.fade =
-			t <= 0 || t >= 1
-				? 0
-				: Math.min(
-						smoothstep(clamp(t / FADE)),
-						smoothstep(clamp((1 - t) / FADE)),
-					);
-		if (this.fade <= 0) {
+	update({ t, active }, delta, elapsed) {
+		this.pass = "none";
+		this.live = false;
+		if (!this.source.glyph) {
 			this.hovered = null;
 			return;
 		}
 
+		/* ---- off the plateau: the approach, seen through the exit ---- */
+		if (!active) {
+			this.hovered = null;
+			// t = 1 is the far side of the plateau: the veil has already put
+			// the paper at zero and handed the frame back to the room. Drawing
+			// the corridor there would flash it back for one step.
+			if (t >= 1) return;
+			const progress = this.source.progress;
+			// The window. Below MORPH_IN the render camera is the ortho one
+			// and the bore is not even lined up yet; above the plateau the
+			// half-turn has begun. Outside it there is no pass at all, and
+			// that is not tidiness: the corridor is 18 bore widths long, it
+			// runs clean through the cyclorama, and from the orbit it would
+			// be a white spear lying across the room.
+			if (journeyH(progress) < JOURNEY.MORPH_IN[0]) return;
+			if (progress > GALLERY.PLATEAU) return;
+			if (this.dirty) this.#rebuild();
+			if (!this.frame) return;
+			// No camera work: this pass is drawn with the LOGO's render
+			// camera, in the logo's depth buffer. See Three.#render.
+			this.pass = "through";
+			this.#paint(0, 0, delta, elapsed);
+			return;
+		}
+
+		/* ---- on the plateau: the corridor is the picture ---- */
 		const seam = this.source.perspCamera;
-		if (!seam || !this.source.glyph) return;
+		if (!seam) return;
 		if (this.dirty) this.#rebuild();
 		const frame = this.frame;
 		if (!frame) return;
 
-		// Uniform speed in t. The page has exactly one law — the picture is a
-		// function of the scroll — and an ease in the middle of a straight
-		// corridor would be a second one, invented for nothing.
-		const travel = clamp((t - FADE) / (1 - 2 * FADE));
-		// The eye leaves the ride line for the centre of the tunnel (the
-		// Delphi framing) and comes back to it for the exit seam, where it has
-		// to be the journey's camera again to the pixel.
+		const travel = travelOf(t);
+		// The exit veil: paper going transparent over the logo's own frame.
+		const veil = smoothstep(clamp((t - (1 - VEIL)) / VEIL));
+		this.pass = veil > 0 ? "veil" : "solo";
+		// A photograph is a link only while the corridor IS the picture —
+		// never through the door on the approach, where the cobalt occludes
+		// it and a raycast against this scene alone would not know.
+		this.live = veil <= 0;
+
+		// The eye leaves the ride line for the centre of the corridor (the
+		// Delphi framing) and comes back to it at the far end.
 		const rise =
 			frame.rideDrop *
 			smoothstep(clamp(travel / RECENTRE)) *
 			smoothstep(clamp((1 - travel) / RECENTRE));
 
 		// DERIVED FROM THE SEAM, never rebuilt from scratch: at travel = 0 and
-		// rise = 0 this reduces to the journey's own camera, pose for pose,
-		// which is what makes the crossfade aligned rather than nearly aligned.
+		// rise = 0 this reduces to the journey's own camera at the door, pose
+		// for pose — and travelOf gives it the journey's SPEED there too, so
+		// the handover shows up in neither position nor velocity.
 		this.camera.position
 			.copy(seam.position)
 			.addScaledVector(frame.axisDir, travel * LENGTH * frame.s)
@@ -237,12 +356,16 @@ export default class Gallery {
 		}
 		this.camera.updateMatrixWorld(true);
 
-		this.#paint(delta, elapsed);
+		this.#paint(veil, travel, delta, elapsed);
 	}
 
-	#paint(delta, elapsed) {
-		this.lattice.material.opacity = 0.5 * this.fade;
-		this.paperMaterial.opacity = this.fade;
+	#paint(veil, travel, delta, elapsed) {
+		// The corridor opens out before it ends: the lines go, and what is
+		// left is paper on every side — which is what makes the veil below a
+		// fade between two flat whites instead of a cut.
+		const open = smoothstep(clamp((travel - (1 - OPEN)) / OPEN));
+		this.lattice.material.opacity = 0.5 * (1 - open) * (1 - veil);
+		this.paperMaterial.opacity = 1 - veil;
 
 		for (const frame of this.frames) {
 			const state = frame.mesh.userData;
@@ -251,7 +374,7 @@ export default class Gallery {
 			if (state.born === -1) state.born = elapsed;
 			const arrived =
 				state.born == null ? 0 : clamp((elapsed - state.born) / ARRIVAL);
-			frame.mesh.material.opacity = this.fade * arrived;
+			frame.mesh.material.opacity = arrived * (1 - veil);
 			frame.mesh.visible = arrived > 0;
 
 			const want = frame.mesh === this.hovered && !this.reducedMotion ? 1 : 0;
@@ -275,12 +398,17 @@ export default class Gallery {
 
 		const s = bore.s;
 		const half = bore.bore / 2;
-		// The seam camera's depth down the axis, measured from the mouth. Every
-		// photograph is placed relative to it, so moving the plateau moves the
-		// whole gallery with it and the lead-in beat survives.
-		const zSeam =
-			bore.camera.position.clone().sub(bore.origin).dot(bore.axisDir) / s;
-		const zFrom = zSeam - 2;
+		// THE DOOR: the bore's exit plane, measured from its mouth. The
+		// corridor starts here and not one cell earlier — that is the whole
+		// change. There is a rung of the lattice exactly on it (2.5 is ten
+		// CELLs), so the door reads as the section line it is.
+		const zDoor = 2 * bore.halfLength;
+		// Where the plateau opens: DOOR_OVER past the door, which is where
+		// PLATEAU was solved for. Taken from the geometry rather than off the
+		// live camera, so the corridor can be built on ANY frame — the
+		// approach needs it long before the camera reaches the plateau.
+		const zSeam = zDoor + DOOR_OVER;
+		const zFrom = zDoor;
 		const zTo = zSeam + LENGTH + GRID.AHEAD;
 
 		this.frame = {
@@ -302,11 +430,15 @@ export default class Gallery {
 
 		/* ---- the paper: four walls and a cap, the only opaque surfaces ---- */
 
-		// ONE material for all five, so the crossfade is one number. The
-		// polygon offset is what lets the lattice sit EXACTLY on the plane of
-		// the bore rather than a hair inside it: the paper is pushed back in
-		// depth, the lines win, and the four edges stay where the cobalt ones
-		// are.
+		// ONE material for all five, so the exit veil is one number. The
+		// polygon offset stays, and its reason is unchanged: it lets the
+		// lattice sit EXACTLY on the plane of the wall rather than a hair
+		// inside it — the paper is pushed back in depth, the lines win. That
+		// matters MORE now than it did under the crossfade, because the wall
+		// this one continues is the cobalt bore's, and a lattice inset by a
+		// hair would put a visible step in it at the door. Pushing the paper
+		// back is also the right side of the tie AT the door: on the shared
+		// edge the cobalt wins, so the seam is one line and not two.
 		this.paperMaterial = new THREE.MeshBasicMaterial({
 			color: new THREE.Color(PAPER),
 			side: THREE.FrontSide,
@@ -331,9 +463,9 @@ export default class Gallery {
 			this.root.add(mesh);
 		}
 		// The cap. Without it the vanishing rectangle of a finite tube shows
-		// the clear colour through, which is the one hole a full fade cannot
-		// cover. It sits past the fog, so it is pure paper and never read as
-		// a wall.
+		// whatever is behind — the clear colour on the plateau, the cyclorama
+		// through the door on the approach. It sits past the fog, so it is
+		// pure paper and never read as a wall.
 		const cap = new THREE.Mesh(
 			new THREE.PlaneGeometry(bore.bore, bore.bore),
 			this.paperMaterial,
@@ -394,9 +526,10 @@ export default class Gallery {
 		}
 
 		// A rectangle of section at every cell boundary: the rungs that give
-		// the corridor its rate of travel. The phase does not matter, the pitch
-		// does — LENGTH is a whole number of these, which is exactly what makes
-		// the picture at t = 1 the picture at t = 0.
+		// the corridor its rate of travel. The phase is not free any more —
+		// the run starts at the door, 2.5 bore widths from the mouth, which is
+		// ten CELLs, so a rung lands exactly ON the door and the passage from
+		// cobalt to paper is marked by a section line rather than by nothing.
 		const corners = [
 			[-r, -r],
 			[r, -r],
@@ -539,7 +672,7 @@ export default class Gallery {
 
 	/** The photograph under a pointer given in NDC. Null outside the gallery. */
 	pick(x, y) {
-		if (this.fade <= 0.5 || this.frames.length === 0) return null;
+		if (!this.live || this.frames.length === 0) return null;
 		this.pointer.set(x, y);
 		this.raycaster.setFromCamera(this.pointer, this.camera);
 		const hits = this.raycaster.intersectObjects(

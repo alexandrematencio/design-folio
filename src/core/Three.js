@@ -2,38 +2,27 @@ import * as THREE from "three";
 import Lenis from "lenis";
 import WebGLContext from "./WebGLContext";
 import Scene from "../scenes/Scene";
-import Gallery from "../scenes/Gallery";
+import Gallery, { GALLERY } from "../scenes/Gallery";
+
+export { GALLERY };
 
 /**
- * THE GALLERY PLATEAU (v2 only).
+ * THE GALLERY PLATEAU (v2 only) — the scroll map, and only that.
  *
  * The gallery is not a state, it is a stretch of road where the orbit stands
- * still. The spacer of v2.html is lengthened by VH, and the scroll-to-progress
- * map becomes monotone-by-parts: below the plateau the orbit runs slightly
- * faster than before (the same 1200vh of film now sits inside a longer
- * spacer), on the plateau it is pinned at PLATEAU, above it resumes exactly
- * where it stopped. Nothing is integrated — scroll back and the whole thing
- * replays in reverse, gallery included.
+ * still. The spacer of v2.html is lengthened by GALLERY.VH, and the
+ * scroll-to-progress map becomes monotone-by-parts: below the plateau the
+ * orbit runs slightly faster than before (the same 1200vh of film now sits
+ * inside a longer spacer), on the plateau it is pinned at PLATEAU, above it
+ * resumes exactly where it stopped. Nothing is integrated — scroll back and
+ * the whole thing replays in reverse, corridor included.
  *
- * PLATEAU is not a taste value. It is the progress at which the journey's
- * perspective camera sits INSIDE the bore, past its mouth and still a way from
- * its exit: JOURNEY.TRAVERSE is [0.44, 0.66] of the leg, and the eased
- * position crosses the mouth at h ≈ 0.542 and the exit at h ≈ 0.627. h = 0.56
- * puts it 0.68 units past the mouth (progress 0.2 + 0.56 × 0.675), where the
- * four cobalt edges of the bore frame the whole picture and the exit is a
- * bright rectangle ahead — which is what the gallery's own tunnel has to line
- * up with, edge for edge, for the crossfade to read as matter dissolving.
- *
- * VH follows from the tunnel's length, not the other way round: the gallery is
- * 18 bore-widths long, the journey cruises through the bore at ~35vh per
- * bore-width, and the traverse owns 0.84 of the plateau — 18 × 35 / 0.84 ≈ 750.
- * That lands at ~39vh of wheel per row of photographs.
+ * PLATEAU itself is solved, not chosen, and it is solved in scenes/Gallery.js
+ * where the corridor's own numbers live: it is the progress at which the
+ * journey's camera has crossed the bore's exit plane by DOOR_OVER — the door.
+ * Which is also why the two constants moved out of here: VH is a function of
+ * the corridor's length, and the length is the gallery's business.
  */
-export const GALLERY = {
-	LOOP_VH: 1200, // what v2.html's spacer was before the plateau
-	VH: 750, // what the plateau adds to it
-	PLATEAU: 0.578, // progress the orbit is pinned at while the gallery runs
-};
 
 /** [a, g, k]: plateau start in raw scroll, its width, and the loop's stretch. */
 const span = () => {
@@ -241,40 +230,58 @@ class Three {
 	}
 
 	/**
-	 * ONE renderer, up to two passes. The logo's scene first, then the gallery
-	 * over it with the colour buffer kept and the DEPTH buffer thrown away —
-	 * the two tunnels are the same geometry in the same world, so without that
-	 * clear they z-fight instead of dissolving.
+	 * ONE renderer, up to two passes, and the corridor decides which (see
+	 * Gallery's `pass`).
 	 *
-	 * Past a full fade the logo pass is skipped outright. That is not only
-	 * tidiness: it is a VSM shadow map, a projection and a room that nobody can
-	 * see, and the plateau is 750vh long.
+	 * "through" IS THE DOOR. The corridor's pass is drawn with the LOGO'S OWN
+	 * render camera — same projection, same near and far — into the logo's own
+	 * depth buffer, with nothing cleared between the two. That is the whole
+	 * mechanism: the corridor starts at the bore's exit plane, the bore is
+	 * convex, so from inside it the corridor can only land INSIDE the exit
+	 * rectangle, and the z-buffer does the occluding for free. It replaces
+	 * exactly what that rectangle used to show and nothing else. The version
+	 * this replaced cleared the depth and cross-faded two coincident tunnels,
+	 * which is a double exposure by construction.
+	 *
+	 * "solo" skips the logo pass outright. Not tidiness: it is a VSM shadow
+	 * map, a projection and a room that nobody can see, over 750vh of plateau.
+	 *
+	 * "veil" is the one place a depth clear survives, and it earns it: the two
+	 * passes are two unrelated cameras (the logo parked at the door, the
+	 * corridor eighteen bore widths further on), so their depths mean nothing
+	 * to each other. It is also the one place where nothing on screen is
+	 * moving — flat paper dissolving off a flat cyclorama — which is exactly
+	 * why the camera is allowed to hold still through it.
 	 */
 	#render() {
 		const renderer = this.context.renderer;
 		if (!renderer) return;
 		const view = this.galleryView;
-		const fade = view?.fade ?? 0;
+		const pass = view?.pass ?? "none";
 
-		if (fade < 1) {
+		if (pass !== "solo") {
 			// renderCamera is which eye draws THIS frame: the ortho camera, or
-			// — only inside the journey's perspective interlude — the tunnel's.
+			// — only inside the journey's perspective interlude — the road's.
 			renderer.autoClear = true;
 			renderer.render(
 				this.scene.scene,
 				this.scene.renderCamera ?? this.scene.camera,
 			);
 		}
-		if (fade <= 0) return;
+		if (pass === "none") return;
 
-		if (fade >= 1) {
+		if (pass === "solo") {
 			renderer.setClearColor(view.clearColour, 1);
 			renderer.autoClear = true;
+			renderer.render(view.scene, view.camera);
+		} else if (pass === "through") {
+			renderer.autoClear = false;
+			renderer.render(view.scene, this.scene.renderCamera ?? this.scene.camera);
 		} else {
 			renderer.autoClear = false;
 			renderer.clearDepth();
+			renderer.render(view.scene, view.camera);
 		}
-		renderer.render(view.scene, view.camera);
 		renderer.autoClear = true;
 	}
 
