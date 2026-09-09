@@ -67,14 +67,16 @@ body {
 }
 
 body {
-	/* The real page is offscreen; nothing here must ever scroll sideways. */
+	/* Nothing here must ever scroll sideways. */
 	overflow-x: hidden;
 }
 
+/* The canvas sits ON the DOM page, not instead of it: see #page-host. */
 #app {
 	position: fixed;
 	inset: 0;
 	pointer-events: none;
+	z-index: 1;
 }
 
 /* Lenis needs a range to travel, and this range IS the orbit: one pass over
@@ -88,14 +90,23 @@ body {
 	pointer-events: none;
 }
 
+/* The live DOM page — the source of the raster, and the copy crawlers and
+   screen readers read. It sits IN the viewport, at the exact place the
+   projection prints it, one layer under the canvas: at rest the canvas paints
+   the same pixels on top of it, and while the orbit runs the canvas is opaque.
+   It used to be parked at left: -200vw. Text positioned off screen is what
+   search engines call hidden text, and discount; text under an opaque canvas
+   is ordinary visible text that happens to be covered. It also means the very
+   first paint IS the rest frame, before WebGL has drawn anything.
+   z-index 0, not -1: -1 would fall behind body's own background. */
 #page-host {
 	position: fixed;
 	top: 0;
-	left: -200vw;
+	left: 0;
 	width: 100vw;
 	height: 100vh;
 	pointer-events: none;
-	z-index: -1;
+	z-index: 0;
 }
 
 /* ---------------------------------------------------------------- the page */
@@ -269,6 +280,27 @@ body {
 	text-decoration-thickness: 0.07em;
 }
 
+/* The clickable side of those links. The ink is on the wall; the pointer
+   never reaches it. utils/pageLinks.js keeps one transparent proxy <a> over
+   each line box of each link, where the scene says that box is on screen this
+   frame, and arms it only while the text is readable. Nothing to paint: the
+   projection already shows the link. Above the canvas, under the menu. */
+#page-links {
+	position: fixed;
+	inset: 0;
+	pointer-events: none;
+	z-index: 5;
+}
+
+.page-link {
+	position: absolute;
+	top: 0;
+	left: 0;
+	display: block;
+	/* Armed per frame by pageLinks.js. */
+	pointer-events: none;
+}
+
 /* ------------------------------------------------------------ the step menu */
 
 /* Three labels, one per step front. Position and opacity are driven per frame
@@ -300,6 +332,9 @@ body {
 	opacity: 0;
 	cursor: pointer;
 	white-space: nowrap;
+	/* Two of the three are real <a href> now (crawlable, middle-clickable);
+	   the reset keeps them looking like the button they replaced. */
+	text-decoration: none;
 }
 
 .step-menu__item:hover,

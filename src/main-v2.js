@@ -1,8 +1,11 @@
-import "./style.css";
 import Three from "./core/Three";
 import { ORBIT } from "./utils/utils";
 import { Mouse } from "lucide";
 import { iconSvg } from "./utils/icon";
+import { attachPageLinks } from "./utils/pageLinks";
+
+// style.css is linked from v2.html's head, not imported here: the DOM page
+// is on screen from the first paint and has to be styled by then.
 
 /**
  * v2 — the same page, drawn with the rule Alexandre actually uses.
@@ -191,10 +194,24 @@ document.addEventListener("DOMContentLoaded", () => {
 		requestAnimationFrame(land);
 	}
 
+	// The page's links (the LENIA one, today), clickable on the projection.
+	const pageLinks = attachPageLinks(three);
+
 	for (const item of items) {
-		item.addEventListener("click", () => {
+		if (import.meta.env.DEV && item.href && item.href !== DESTINATIONS[item.dataset.dest]?.url) {
+			console.warn(`step-menu: href of "${item.dataset.dest}" differs from DESTINATIONS`);
+		}
+		item.addEventListener("click", (event) => {
 			const dest = DESTINATIONS[item.dataset.dest];
 			if (!dest || three.scene.dive) return;
+
+			// A modified click (middle, ctrl/cmd, shift) is a request for a
+			// new tab or window: the href is real, let the browser have it.
+			if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) {
+				return;
+			}
+			// Otherwise the dive plays first and navigates at its end.
+			event.preventDefault();
 
 			// Someone who asked for less motion gets the destination, not
 			// the somersault.
@@ -312,6 +329,7 @@ document.addEventListener("DOMContentLoaded", () => {
 	const tick = () => {
 		const { facing, steps } = three.scene.stepAnchors();
 		const dive = three.scene.dive;
+		pageLinks.tick();
 
 		// Rest is progress 0 exactly (the snap lands there); the loop's other
 		// end counts too, one frame before the wrap.

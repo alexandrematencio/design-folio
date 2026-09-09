@@ -1,0 +1,3 @@
+# Everything is meant to be read. Add a Sitemap: line once the domain is set.
+User-agent: *
+Allow: /

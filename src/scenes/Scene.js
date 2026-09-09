@@ -774,6 +774,9 @@ export default class Scene {
 		this.projector = null;
 		this.htmlToCanvas = null;
 		this.projectedMeshes = [];
+		// Where the page's links sit in the room; see #buildPageAnchors.
+		this.pageAnchors = [];
+		this.occlusionRay = new THREE.Raycaster();
 		this.glyph = null;
 		this.cyclorama = null;
 		this.progress = 0;
@@ -1145,9 +1148,11 @@ export default class Scene {
 		}
 		await this.htmlToCanvas.update();
 
-		// The text's physical footprint follows the same layout the raster
-		// just captured — rebuild it here so a resize moves both together.
+		// The text's physical footprint — and where its links sit — follow
+		// the same layout the raster just captured: rebuilt here so a resize
+		// moves all three together.
 		this.#buildPageFootprint();
+		this.#buildPageAnchors();
 
 		// Signals "the page is on the geometry". Used by tools/shoot.mjs, and
 		// the honest hook for a loading state if one is ever wanted.
@@ -1732,9 +1737,9 @@ export default class Scene {
 	 */
 	#buildPageFootprint() {
 		if (!this.journey || !this.cyclorama) return;
-		// Relative to #page's own origin: the live DOM copy is parked OFF
-		// SCREEN while its raster is what the projector actually prints, so
-		// viewport coordinates here would be off by the whole parking offset.
+		// Relative to #page's own origin, not to the viewport: the raster is
+		// of #page alone, so #page's frame is the projector's frame, whatever
+		// the live copy's host is positioned at.
 		const origin = document
 			.getElementById("page")
 			?.getBoundingClientRect();
@@ -1814,6 +1819,123 @@ export default class Scene {
 		}
 		const frac = seen / samples.length;
 		return smoothstep(clamp((frac - FLOOR) / (FULL - FLOOR)));
+	}
+
+	/* -------------------------------------------------------- page links */
+
+	/**
+	 * Where each link of the page physically sits in the room. Same cast as
+	 * the footprint: the four corners of every line box of every <a> under
+	 * #page, from the frozen projector onto the surfaces it prints on. A link
+	 * that wraps has one entry per line. Cast once per layout, like the
+	 * footprint; per frame these are a handful of matrix projections.
+	 */
+	#buildPageAnchors() {
+		this.pageAnchors = [];
+		if (!this.projectedMeshes.length) return;
+		const page = document.getElementById("page");
+		const origin = page?.getBoundingClientRect();
+		if (!origin) return;
+
+		const ray = new THREE.Raycaster();
+		const ndc = new THREE.Vector2();
+		const cast = (px, py) => {
+			ndc.set((px / this.width) * 2 - 1, -((py / this.height) * 2 - 1));
+			ray.setFromCamera(ndc, this.restCamera);
+			const hit = ray.intersectObjects(this.projectedMeshes)[0];
+			return hit
+				? { point: hit.point.clone(), normal: hit.face.normal.clone() }
+				: null;
+		};
+
+		for (const el of page.querySelectorAll("a[href]")) {
+			for (const r of el.getClientRects()) {
+				const l = r.left - origin.left;
+				const t = r.top - origin.top;
+				const corners = [
+					cast(l, t),
+					cast(l + r.width, t),
+					cast(l + r.width, t + r.height),
+					cast(l, t + r.height),
+				];
+				if (corners.some((c) => !c)) continue;
+				this.pageAnchors.push({ el, corners });
+			}
+		}
+	}
+
+	/**
+	 * Where those line boxes are on screen, in CSS pixels, right now — the
+	 * hook for utils/pageLinks.js, the way stepAnchors() is the menu's.
+	 *
+	 * Each entry is the screen bounding box of one line box of one link, with
+	 * `onScreen` true only when the whole box is in frame, printed on a
+	 * surface that faces the eye, and not hidden behind the solid — that
+	 * last one is a single ray per box, from the eye to the box's centre.
+	 * `opacity` is the page's, so the caller can refuse a click on text
+	 * that has faded: readable is a fact about the frame, not about the
+	 * scroll.
+	 */
+	pageLinkAnchors() {
+		const opacity = this.pageOpacity.value;
+		const links = [];
+		if (!this.pageAnchors?.length) return { opacity, links };
+
+		const eye = this.renderCamera ?? this.camera;
+		const forward = eye.getWorldDirection(new THREE.Vector3());
+		const v = new THREE.Vector3();
+		const centre = new THREE.Vector3();
+
+		for (const { el, corners } of this.pageAnchors) {
+			let minX = Infinity;
+			let minY = Infinity;
+			let maxX = -Infinity;
+			let maxY = -Infinity;
+			let onScreen = true;
+			centre.set(0, 0, 0);
+			for (const { point, normal } of corners) {
+				if (normal.dot(forward) >= -0.05) onScreen = false;
+				v.copy(point).project(eye);
+				if (Math.abs(v.x) > 1 || Math.abs(v.y) > 1 || Math.abs(v.z) > 1) {
+					onScreen = false;
+				}
+				const x = (v.x * 0.5 + 0.5) * this.width;
+				const y = (-v.y * 0.5 + 0.5) * this.height;
+				minX = Math.min(minX, x);
+				minY = Math.min(minY, y);
+				maxX = Math.max(maxX, x);
+				maxY = Math.max(maxY, y);
+				centre.addScaledVector(point, 0.25);
+			}
+			if (onScreen && this.#occluded(centre, eye)) onScreen = false;
+			links.push({
+				el,
+				x: minX,
+				y: minY,
+				width: maxX - minX,
+				height: maxY - minY,
+				onScreen,
+			});
+		}
+		return { opacity, links };
+	}
+
+	/**
+	 * Is something of the scene between the eye and this point of the room?
+	 * One ray, cast the way the camera looks, against everything that could
+	 * stand in front of the page: the solid and the room itself (the near
+	 * wall of the cyclorama is culled, so it does not count — its back face
+	 * is never hit).
+	 */
+	#occluded(point, eye) {
+		if (!this.glyph) return false;
+		const v = point.clone().project(eye);
+		const ray = this.occlusionRay;
+		ray.setFromCamera({ x: v.x, y: v.y }, eye);
+		const hit = ray.intersectObjects([this.glyph, ...this.projectedMeshes], true)[0];
+		if (!hit) return false;
+		const reach = ray.ray.origin.distanceTo(point);
+		return hit.distance < reach - 1e-3 * reach;
 	}
 
 	/* ------------------------------------------------------------- the menu */

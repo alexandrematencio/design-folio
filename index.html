@@ -4,11 +4,59 @@
 		<meta charset="UTF-8" />
 		<link rel="icon" type="image/svg+xml" href="/glyph-alxmtnc.svg" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<meta
-			name="description"
-			content="Alex Matencio — creative mind, synesthete, designer. An anamorphic landing page."
-		/>
-		<title>Hi, I'm Alex</title>
+		<!--
+			The stylesheet is linked from the head, not imported by the entry
+			module: the DOM page is on screen from the first paint (see
+			#page-host in style.css), so it has to be styled by then. A module
+			import would apply a beat later in dev and flash the raw copy.
+		-->
+		<link rel="stylesheet" href="/src/style.css" />
+
+		<title>Hi, I'm Alex — Alex Matencio, designer &amp; photographer</title>
+		<meta name="description" content="Alex Matencio — designer, photographer and synesthete. Visual work that pleases the client and convinces their customers; the rest goes to cognitive science, crowd dynamics and live experiments." />
+
+		<!--
+			Sharing cards. og:image should be an ABSOLUTE URL once the domain
+			is settled — scrapers do not resolve relative ones reliably. The
+			file is the rest frame at 1200×630, shot with tools/shoot.mjs.
+			No canonical for the same reason: an absolute URL is required, and
+			the domain is not chosen yet (see README, "Reste à faire").
+		-->
+		<meta property="og:type" content="website" />
+		<meta property="og:title" content="Hi, I'm Alex — Alex Matencio, designer &amp; photographer" />
+		<meta property="og:description" content="Alex Matencio — designer, photographer and synesthete. Visual work that pleases the client and convinces their customers; the rest goes to cognitive science, crowd dynamics and live experiments." />
+		<meta property="og:image" content="/og.png" />
+		<meta property="og:image:width" content="1200" />
+		<meta property="og:image:height" content="630" />
+		<meta name="twitter:card" content="summary_large_image" />
+		<meta name="twitter:title" content="Hi, I'm Alex — Alex Matencio, designer &amp; photographer" />
+		<meta name="twitter:description" content="Alex Matencio — designer, photographer and synesthete. Visual work that pleases the client and convinces their customers; the rest goes to cognitive science, crowd dynamics and live experiments." />
+		<meta name="twitter:image" content="/og.png" />
+
+		<!-- Who the page is about, for search engines and AI answer engines. -->
+		<script type="application/ld+json">
+			{
+				"@context": "https://schema.org",
+				"@type": "Person",
+				"name": "Alex Matencio",
+				"alternateName": "Alexandre Matencio",
+				"jobTitle": "Designer and photographer",
+				"description": "Creative mind with several forms of high-functioning synesthesia. Designs visual work that pleases the client and convinces their customers; studies cognitive science, evolutionary psychology and crowd dynamics.",
+				"knowsAbout": [
+					"Graphic design",
+					"Web design",
+					"Photography",
+					"Synesthesia",
+					"Cognitive science",
+					"Crowd dynamics"
+				],
+				"sameAs": [
+					"https://www.aaxlo.com",
+					"https://alexandrematencio.github.io/photo-portfolio",
+					"https://github.com/alexandrematencio"
+				]
+			}
+		</script>
 	</head>
 	<body>
 		<!-- The WebGL canvas is injected here by WebGLContext. -->
@@ -17,28 +65,24 @@
 		<!-- Gives Lenis a scrollable range. Nothing is ever painted in it. -->
 		<div id="scroll-spacer" aria-hidden="true"></div>
 
-		<!--
-			Offscreen DOM source — this is what gets rasterized and projected.
-			Positioning is inlined so the element sits offscreen from the very
-			first paint: style.css is parsed as a module, so without this the
-			raw content flashes in body flow before the stylesheet applies.
 
-			This block is ALSO the accessible, crawlable copy of the page: it
-			stays in the DOM as real text (aria-hidden is deliberately NOT set,
-			the WebGL canvas carries aria-hidden instead).
+		<!--
+			The clickable side of the page's links. The <a> under #page is ink
+			on the wall once projected; utils/pageLinks.js keeps a transparent
+			proxy anchor over each of its line boxes, wherever the scene puts
+			them this frame, armed only while the text is readable.
 		-->
-		<div
-			id="page-host"
-			style="
-				position: fixed;
-				top: 0;
-				left: -200vw;
-				width: 100vw;
-				height: 100vh;
-				pointer-events: none;
-				z-index: -1;
-			"
-		>
+		<div id="page-links" aria-hidden="true"></div>
+		<!--
+			The live DOM source — this is what gets rasterized and projected,
+			AND the copy crawlers and screen readers read. It sits in the
+			viewport, under the canvas, at the exact place the projection
+			prints it (style.css, #page-host): at rest the canvas paints the
+			same pixels on top, so nothing shows twice, and the first paint is
+			the rest frame before WebGL has drawn a thing. Real text, no
+			aria-hidden here: the canvas carries it instead.
+		-->
+		<div id="page-host">
 			<article id="page">
 				<div class="page__inner">
 					<h1 class="display">Hi,&nbsp;I&rsquo;m&nbsp;Alex.</h1>

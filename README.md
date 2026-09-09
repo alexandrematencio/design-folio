@@ -53,7 +53,7 @@ npm run build
 ## Comment ça marche
 
 Une **caméra projecteur** est un clone figé de la caméra de rendu, à sa pose de
-repos. Le DOM (`#page`, hors écran) est rastérisé en texture, et cette texture
+repos. Le DOM (`#page`, sous le canvas) est rastérisé en texture, et cette texture
 est projetée depuis ce projecteur sur le cyclorama. Tant que les deux caméras
 coïncident, chaque surface affiche exactement le pixel que la page plate aurait
 affiché à cet endroit : la scène **est** le document.
@@ -592,8 +592,8 @@ le cadre**, quelle que soit l'animation qui a bougé la caméra — l'orbite, le
 tunnel, une plongée, la prochaine qu'on ajoutera.
 
 `#buildPageFootprint` échantillonne une grille sur l'union des boîtes du titre
-et du corps (relatives à `#page` : la copie DOM vivante est parquée hors écran,
-ses coordonnées viewport mentent de tout l'offset de parking), lance chaque
+et du corps (relatives à `#page`, pas au viewport : le raster est celui de
+`#page` seul, donc son repère est celui du projecteur), lance chaque
 point depuis le projecteur gelé sur le cyclorama — le trajet même de la
 projection — et garde point d'impact + normale. Chaque frame, `#pageVisibility`
 reprojette ces échantillons dans la caméra courante : dans le cadre et sur une
@@ -611,6 +611,50 @@ sol derrière les items, à pleine opacité — c'est la règle demandée, et c'
 concept de la page (« scroll — it isn't flat ») qui s'expose. `index.html`
 garde sa fenêtre calibrée d'origine.
 
+### Le texte est du texte, et ses liens se cliquent (2026-09-10)
+
+Deux demandes le même jour : que le texte imprimé sur le sol soit **lisible
+par un navigateur** (donc par un moteur de recherche), et qu'un lien posé dans
+ce texte **se clique** — celui vers LENIA se voyait, mais l'encre projetée sur
+un mur n'est pas sous le pointeur.
+
+**Le DOM n'est plus parqué à `left: -200vw`.** Il était réel, mais hors écran,
+ce que Google appelle du texte caché et dévalue. `#page-host` est maintenant
+dans le viewport, à l'endroit exact où la projection l'imprime, **une couche
+sous le canvas** (`z-index` 0 sous `#app` à 1 — pas −1, qui passerait derrière
+le fond du `body`). Au repos le canvas repeint les mêmes pixels par-dessus,
+en orbite il est opaque : rien ne se voit deux fois, et le premier paint **est**
+l'image de repos, avant que WebGL ait dessiné quoi que ce soit. Corollaire :
+la feuille de style est liée depuis le `<head>` et non importée par le module
+d'entrée, sinon le DOM visible arrivait nu un instant en dev.
+
+**Les liens ont une doublure.** `Scene.pageLinkAnchors()` fait pour chaque
+boîte de ligne de chaque `<a>` sous `#page` ce que `stepAnchors()` fait pour
+les contremarches : les quatre coins sont lancés une fois par layout depuis le
+projecteur gelé sur la pièce (`#buildPageAnchors`, même trajet que
+l'empreinte), puis reprojetés chaque frame dans la caméra courante.
+`utils/pageLinks.js` tient au-dessus du canvas un `<a>` transparent par boîte
+— même `href`, `target`, `rel`, donc clic-molette et « ouvrir dans un onglet »
+marchent — et ne l'arme que si le texte est **lisible** : opacité de page
+≥ 0,5, boîte entière dans le cadre sur une surface tournée vers l'œil, rien du
+solide devant (un rayon par boîte, de l'œil au centre), pas de plongée en
+cours. La doublure est `aria-hidden` et hors tabulation : le lien sémantique
+reste celui du DOM, que le clavier atteint et que les robots lisent.
+
+Vérifié au pixel (script Puppeteer, 18 contrôles) : au repos la doublure
+coïncide avec le lien DOM à 0,00 px, `elementFromPoint` la rend, l'encre
+cobalt est dessous ; à progress 0,012 elle a suivi le texte (−55, −47 px) et
+l'encre est toujours dessous ; à 0,03 le lien est sorti du cadre par la gauche
+et elle se désarme ; à la vue du menu et à 0,5, désarmée ; un vrai clic
+navigue. Contrôle du repos inchangé : `PASS`, identique à l'octet.
+
+Au passage, le `<head>` porte ce qu'un moteur attend : titre avec le nom,
+description, cartes Open Graph / Twitter (`public/og.png`, l'image de repos en
+1200 × 630, tirée avec l'outil de capture), un `Person` en JSON-LD,
+`public/robots.txt`. Et les deux items du menu qui ont une destination sont
+de vrais `<a href>` — le clic est intercepté pour jouer la plongée, un clic
+modifié (molette, ⌘) est laissé au navigateur.
+
 ### Les fichiers
 
 ```
@@ -626,6 +670,7 @@ src/
   utils/glyphLightBake.js    attache le bake à la géométrie (et refuse un bake périmé)
   utils/studioEnvironment.js le studio (plafond, pas de sol) construit à la main
   utils/utils.js             le modèle d'orbite + les ancres du menu
+  utils/pageLinks.js         la doublure cliquable des liens de la page
   main.js / main-v2.js       les deux points d'entrée : la règle d'encrage, un mot
 tools/
   shoot.mjs                  frames déterministes + contrôle du repos
@@ -1047,6 +1092,12 @@ lampes vivent dans le ciel, le bake dit combien de ciel chaque vertex voit,
 - **Design n'a pas de destination.** Le label est sur sa contremarche, la
   plongée existe, le clic n'est pas branché. À décider : cette page elle-même,
   une page dédiée, ou rien.
+- **Le domaine n'est pas choisi, donc pas de `canonical` ni d'`og:image`
+  absolue.** Les deux exigent une URL absolue ; une fausse ferait plus de mal
+  qu'une absente. À faire le jour du domaine : `<link rel="canonical">` sur la
+  page retenue, `og:image` / `twitter:image` en absolu, une ligne `Sitemap:`
+  dans `robots.txt`. Tant que `/` et `/v2.html` coexistent avec le même texte,
+  c'est un doublon aux yeux d'un moteur — une raison de plus de trancher.
 - **`/lenia.html` n'existe pas encore.** Le nouveau texte de `v2.html` fait de
   LENIA un lien (« running live within this website ») ; le POC tourne, la page
   reste à faire. Tant qu'elle n'existe pas, le lien mène sur un 404 de dev —
