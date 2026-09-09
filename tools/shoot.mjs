@@ -10,6 +10,8 @@
  *   node tools/shoot.mjs
  *   node tools/shoot.mjs --width 430 --height 930 --out tools/shots/narrow
  *   npm run shoot:v2                # the one-material page, wedge asserted
+ *   node tools/shoot.mjs --url http://localhost:5180/v2.html --gallery \
+ *     --out tools/shots/gallery     # the plateau: both seams and the ride
  *
  * THE REST-FRAME CHECK
  * At progress 0 the render camera and the projector camera coincide and
@@ -53,6 +55,13 @@ const OUT = path.join(ROOT, args.out ?? "tools/shots");
 // Rest, the first flinch out of flatness, the two poses that matter (steps
 // square on at 0.125, the back at 0.625) and two points in between.
 const FRAMES = [0, 0.02, 0.04, 0.07, 0.125, 0.3, 0.5, 0.625];
+
+// --gallery: the plateau, sampled where the answers are. The two crossfades
+// get three frames each because they are the only place this page can fail
+// invisibly — g002 and g098 must show the cobalt bore and the white tunnel
+// with the SAME four edges, or the seam is not a seam. g050 is the middle of
+// the ride, where the four walls must all be carrying photographs.
+const GALLERY_FRAMES = [0.02, 0.06, 0.1, 0.5, 0.9, 0.94, 0.98];
 
 const BRAND = {
 	paper: [250, 250, 248],
@@ -295,6 +304,44 @@ try {
 		await page.screenshot({ path: path.join(OUT, name) });
 	}
 	console.log(`\nwrote ${FRAMES.length} frames to ${path.relative(ROOT, OUT)}`);
+
+	/* ------------------------------------------------------------- gallery */
+
+	if (args.gallery) {
+		// The tunnel is built lazily, off a camera that has to be ON the
+		// plateau first — so pin the override, let a frame build it, and only
+		// then ask for the textures. Asking first would arm an empty tunnel.
+		await page.evaluate(async () => {
+			window.__three.galleryOverride = 0.5;
+			for (let i = 0; i < 3; i++) {
+				await new Promise((r) => requestAnimationFrame(r));
+			}
+			window.__three.galleryView.arm();
+		});
+		// 31 baked JPEGs off the dev server. Waiting is not politeness: an
+		// unloaded photograph is an invisible plane, and the frame would be a
+		// picture of an empty corridor that looks exactly like a bug.
+		await page
+			.waitForFunction(() => window.__three.galleryView.ready, { timeout: 30000 })
+			.catch(() => console.log("  (textures did not all arrive)"));
+
+		for (const t of GALLERY_FRAMES) {
+			await page.evaluate(async (v) => {
+				window.__three.galleryOverride = v;
+				for (let i = 0; i < 6; i++) {
+					await new Promise((r) => requestAnimationFrame(r));
+				}
+			}, t);
+			const name = `g${String(Math.round(t * 100)).padStart(3, "0")}.png`;
+			await page.screenshot({ path: path.join(OUT, name) });
+		}
+		await page.evaluate(() => {
+			window.__three.galleryOverride = null;
+		});
+		console.log(
+			`wrote ${GALLERY_FRAMES.length} gallery frames to ${path.relative(ROOT, OUT)}`,
+		);
+	}
 
 	/* ---------------------------------------------------------- placement */
 

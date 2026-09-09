@@ -13,6 +13,14 @@
  * hard the worst moment differs from cruise. The budget printed at the end is
  * the pass bar the journey is held to.
  *
+ * WHAT THIS TOOL DOES NOT SEE: the gallery. It samples progressOverride, and
+ * the gallery plateau is a stretch of scroll where progress does not move at
+ * all (galleryOverride is its own axis — see GALLERY in core/Three.js). That
+ * is accepted rather than a gap: the gallery drives a straight line down a
+ * periodic corridor at constant speed in t, so there is no transit to measure
+ * and nothing that can lurch. Its two crossfades are judged by eye, on the
+ * frames tools/shoot.mjs --gallery writes.
+ *
  *   npm run dev            # in another shell
  *   node tools/flow.mjs                       # v2, 400 steps
  *   node tools/flow.mjs --url http://localhost:5180/ --steps 200
