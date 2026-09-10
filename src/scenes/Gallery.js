@@ -286,12 +286,34 @@ export default class Gallery {
 
 		// The corridor is built from boreFrame() alone — no camera in it any
 		// more — but the glyph is not placed yet at construction time, so the
-		// world frame it hangs on does not exist. Build lazily, on the first
-		// frame the corridor is actually asked for, which is now the approach
-		// and no longer the plateau.
+		// world frame it hangs on does not exist. Build on the FIRST FRAME THE
+		// GLYPH EXISTS — at rest, long before anyone looks down the bore — and
+		// not on the first frame the corridor is asked for. See #warm for why.
 		this.dirty = true;
 		this.armed = false;
 		this.pending = 0;
+		/** Photographs asked of the network, by slug: a rebuild never re-asks. */
+		this.requested = new Set();
+		/**
+		 * Decoded textures waiting for their turn on the GPU — one per frame,
+		 * see #warm. Each entry is { slug, texture }.
+		 */
+		this.uploads = [];
+		/**
+		 * ONE WHITE PIXEL, the map every photograph and the arrow carry until
+		 * their own lands. Not decoration: a MeshBasicMaterial WITH a map is a
+		 * different shader program from one without (USE_MAP), and the program
+		 * is what #precompile has to build ahead of time. Same colour space as
+		 * the photographs, so swapping the real texture in changes a uniform
+		 * and nothing else.
+		 */
+		this.placeholder = new THREE.DataTexture(
+			new Uint8Array([255, 255, 255, 255]),
+			1,
+			1,
+		);
+		this.placeholder.colorSpace = THREE.SRGBColorSpace;
+		this.placeholder.needsUpdate = true;
 
 		this.raycaster = new THREE.Raycaster();
 		this.pointer = new THREE.Vector2();
@@ -320,12 +342,18 @@ export default class Gallery {
 	 * scroll: a texture arriving, and a pointer resting on a photograph.
 	 */
 	update({ t, active }, delta, elapsed) {
+		const shown = this.pass !== "none";
 		this.pass = "none";
 		this.live = false;
 		if (!this.source.glyph) {
 			this.hovered = null;
 			return;
 		}
+		// Built the moment the glyph is placed, whatever the scroll is doing —
+		// which is nothing, at that point: the page is at rest. And the GPU
+		// gets its share of the wait here too, one texture per frame.
+		if (this.dirty) this.#rebuild();
+		this.#warm(shown);
 
 		/* ---- off the plateau: the approach, seen through the exit ---- */
 		if (!active) {
@@ -343,7 +371,6 @@ export default class Gallery {
 			// be a white spear lying across the room.
 			if (journeyH(progress) < JOURNEY.MORPH_IN[0]) return;
 			if (progress > GALLERY.PLATEAU) return;
-			if (this.dirty) this.#rebuild();
 			if (!this.frame) return;
 			// No camera work: this pass is drawn with the LOGO's render
 			// camera, in the logo's depth buffer. See Three.#render. The fog,
@@ -357,7 +384,6 @@ export default class Gallery {
 		/* ---- on the plateau: the corridor is the picture ---- */
 		const seam = this.source.perspCamera;
 		if (!seam) return;
-		if (this.dirty) this.#rebuild();
 		const frame = this.frame;
 		if (!frame) return;
 		this.#fogFrom(0); // the eye is through: the band rides the eye again
@@ -462,7 +488,71 @@ export default class Gallery {
 		this.#clear();
 		this.#build();
 		this.dirty = false;
+		this.#precompile();
 		if (this.armed) this.#loadTextures();
+	}
+
+	/**
+	 * THE TUNNEL IS PAID FOR AT REST, NOT AT THE DOOR. Measured before this
+	 * existed (tools: a Puppeteer walk of progress 0.30 → 0.60 in steps of
+	 * 0.002, at 1600 × 1000): nothing was built or fetched until the first
+	 * "through" frame at progress 0.404 — the parking spot, exactly where the
+	 * camera settles after ALIGN. That frame paid the build and three shader
+	 * compiles (24–29 ms), and two frames later all thirty-one photographs
+	 * landed together and were decoded and uploaded in ONE frame: 178 ms
+	 * cold, 207 ms from the HTTP cache. Lenis ticks inside that same rAF, so
+	 * the scroll froze with the picture: the camera stopped, the corridor
+	 * popped into the hole, the ride resumed. That is the hitch.
+	 *
+	 * Three moves, all before the scroll goes anywhere:
+	 *   - #rebuild runs on the first frame the glyph is placed (above), so
+	 *     the geometry and the fetches start at rest;
+	 *   - this compiles the corridor's programs now, with the placeholder map
+	 *     in every slot so the programs compiled are the ones that will draw;
+	 *   - #warm uploads the decoded textures one per frame, and binds each
+	 *     only once it is resident, so the first frame that draws a
+	 *     photograph has nothing left to pay.
+	 * compileAsync leans on KHR_parallel_shader_compile where it exists; the
+	 * fallback is the synchronous compile, at rest, where a long frame is a
+	 * frame where nothing moves.
+	 */
+	#precompile() {
+		const renderer = this.context?.renderer;
+		if (!renderer || !this.frame) return;
+		try {
+			const done = renderer.compileAsync
+				? renderer.compileAsync(this.scene, this.camera)
+				: (renderer.compile(this.scene, this.camera), Promise.resolve());
+			done.catch(() => {});
+		} catch {
+			/* a failed warm-up costs what it used to cost: a slow first draw */
+		}
+	}
+
+	/**
+	 * One texture onto the GPU per frame, from the queue #loadTextures feeds.
+	 * A 1024-px photograph is a couple of milliseconds to upload once it is
+	 * decoded (and it IS decoded — see the loader); thirty-one of them are a
+	 * third of a second in one frame, or nothing at all spread over half a
+	 * second of rest. `shown` says whether the corridor was on screen last
+	 * frame: if so the photograph ARRIVES, with its fade (born = -1); if not,
+	 * it is simply there when the corridor first shows (born = 0), which is
+	 * what "preloaded" means.
+	 */
+	#warm(shown) {
+		if (this.uploads.length === 0) return;
+		const renderer = this.context?.renderer;
+		if (!renderer) return;
+		const { slug, texture } = this.uploads.shift();
+		renderer.initTexture(texture);
+		this.textures.set(slug, texture);
+		for (const f of this.frames) {
+			if (f.mesh.userData.photo.slug !== slug) continue;
+			f.mesh.material.map = texture;
+			f.mesh.material.needsUpdate = true;
+			f.mesh.userData.born = shown ? -1 : 0;
+		}
+		this.pending--;
 	}
 
 	#build() {
@@ -608,6 +698,7 @@ export default class Gallery {
 			mesh.material.map = this.arrowTexture;
 			mesh.material.needsUpdate = true;
 		} else {
+			mesh.material.map = this.placeholder; // the USE_MAP program, now
 			const px = GRID.ARROW_PX;
 			new THREE.TextureLoader().load(
 				iconDataUrl(ArrowUp, { width: px, height: px, stroke: INK }),
@@ -716,6 +807,8 @@ export default class Gallery {
 			mesh.material.map = texture;
 			mesh.material.needsUpdate = true;
 			mesh.userData.born = 0; // already paid for on a previous build
+		} else {
+			mesh.material.map = this.placeholder; // the USE_MAP program, now
 		}
 		return { mesh, hover: 0 };
 	}
@@ -762,33 +855,46 @@ export default class Gallery {
 		this.#loadTextures();
 	}
 
+	/**
+	 * Fetch, DECODE, then queue for the GPU — three steps, and the middle one
+	 * is the point. TextureLoader hands back an <img> that is loaded but not
+	 * decoded; the decode happens synchronously inside texImage2D, on the
+	 * first frame that draws the plane. `img.decode()` does it off the main
+	 * thread and resolves when the bitmap is ready, so the upload in #warm is
+	 * a copy and nothing more. The texture is bound to its plane only there,
+	 * once resident: `pending` counts until then, so `ready` still means
+	 * "drawable", which is what main-v2's return from a photograph waits for.
+	 */
 	#loadTextures() {
 		if (this.frames.length === 0) return;
-		const loader = new THREE.TextureLoader();
+		const loader = new THREE.ImageLoader();
 		const anisotropy =
 			this.context?.renderer?.capabilities.getMaxAnisotropy() ?? 1;
 		for (const { mesh } of this.frames) {
 			const photo = mesh.userData.photo;
-			if (this.textures.has(photo.slug)) continue;
+			if (this.textures.has(photo.slug) || this.requested.has(photo.slug)) {
+				continue;
+			}
+			this.requested.add(photo.slug);
 			this.pending++;
 			loader.load(
 				photo.src,
-				(texture) => {
+				async (image) => {
+					try {
+						await image.decode();
+					} catch {
+						/* an image the browser will not decode ahead: it will
+						   do it on first draw, as before */
+					}
+					const texture = new THREE.Texture(image);
 					texture.colorSpace = THREE.SRGBColorSpace;
 					texture.anisotropy = anisotropy; // the walls are seen edge-on
-					this.textures.set(photo.slug, texture);
-					// A resize may have rebuilt the meshes since: look the slug
-					// up rather than close over the plane that asked.
-					for (const f of this.frames) {
-						if (f.mesh.userData.photo.slug !== photo.slug) continue;
-						f.mesh.material.map = texture;
-						f.mesh.material.needsUpdate = true;
-						f.mesh.userData.born = -1;
-					}
-					this.pending--;
+					texture.needsUpdate = true;
+					this.uploads.push({ slug: photo.slug, texture });
 				},
 				undefined,
 				() => {
+					this.requested.delete(photo.slug);
 					this.pending--;
 				},
 			);

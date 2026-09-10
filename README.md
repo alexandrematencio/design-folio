@@ -655,6 +655,46 @@ description, cartes Open Graph / Twitter (`public/og.png`, l'image de repos en
 de vrais `<a href>` — le clic est intercepté pour jouer la plongée, un clic
 modifié (molette, ⌘) est laissé au navigateur.
 
+### Le tunnel est payé au repos, pas à la porte (2026-09-10)
+
+« Quand la caméra se pose, il y a une micro-attente, ensuite je vois le tunnel
+(avec la galerie) se montrer, et là seulement ça avance de nouveau. » Mesuré
+avant de toucher quoi que ce soit (marche de progress 0,30 → 0,60 par pas de
+0,002, en 1600 × 1000, Chrome headless) : **rien n'était construit ni chargé
+au repos**. Le couloir se construisait sur la première frame de la passe
+`through`, à progress 0,404 — le parking, exactement là où la caméra se pose
+après ALIGN. Cette frame payait la géométrie et trois compilations de shaders
+(24 à 29 ms), et deux frames plus tard les trente et une photographies
+atterrissaient ensemble, décodées et envoyées au GPU dans **une seule frame :
+178 ms à froid, 207 ms depuis le cache HTTP**. Lenis tourne dans ce même rAF,
+donc le scroll gelait avec l'image. C'est la micro-attente, et le tunnel qui
+« se montre » ensuite.
+
+L'`arm()` sur idle existait déjà et ne servait à rien : il déclenchait le
+chargement des textures, mais sur une liste de cadres encore vide, puisque le
+couloir n'était pas construit.
+
+Trois gestes, tous avant que le scroll aille où que ce soit, dans `Gallery.js` :
+
+| | Avant | Après |
+|---|---|---|
+| Construction du couloir | première frame de la passe `through` (0,404) | **première frame où le glyph est placé** — au repos |
+| Shaders | compilés au premier dessin | `renderer.compileAsync` juste après la construction, avec **un pixel blanc en `map`** sur chaque photo et sur la flèche : une `MeshBasicMaterial` avec `map` est un autre programme (`USE_MAP`) que sans, et c'est celui-là qu'il faut avoir compilé. Vérifié : 10 programmes avant, 10 après la porte, 10 sur le plateau — la vraie texture ne change qu'un uniform |
+| Textures | `TextureLoader`, décodage synchrone dans `texImage2D` au premier dessin, toutes dans la même frame | `ImageLoader` + `img.decode()` (hors thread principal), puis **une seule `renderer.initTexture` par frame** (`#warm`), liée au cadre seulement une fois résidente |
+
+Une photo qui devient résidente pendant que le couloir est hors écran est
+simplement là quand il apparaît (`born = 0`) ; si elle arrive pendant qu'on le
+regarde, elle garde son fondu d'arrivée. `ready` conserve son sens — tout ce
+qui va arriver est **dessinable** — parce que `pending` compte jusqu'à
+l'envoi au GPU, pas jusqu'à la réponse réseau.
+
+**Mesuré après, même marche :** aucune frame au-dessus de 22 ms sur les deux
+passages (pire : 20,8 ms à froid, 21,0 ms depuis le cache), 31 textures
+résidentes au repos, `born` à 0 partout. Ce que ça coûte : une frame de
+~55 ms de plus au chargement, au repos, où rien ne bouge (le chargement en
+avait déjà une de 53 ms avant). Contrôle du repos : `PASS`, identique à
+l'octet ; console propre ; frames de galerie et de porte inchangées.
+
 ### Les fichiers
 
 ```
