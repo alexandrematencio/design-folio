@@ -103,14 +103,16 @@ const GRID = {
 	MARGIN: 0.1,
 	/**
 	 * THE EXIT ARROW, printed on the floor after the last row: cells past the
-	 * last row's centre to the arrow's centre. The floor is free there (the
-	 * last row hangs on the ceiling and the +x wall), so it reads on its own,
-	 * pointing down the axis at the door out. Two cells is the end of the
-	 * trip itself: the arrow lies under the eye when the ride stops, and is
-	 * seen from a bore width and a half back — where the last pictures are
-	 * still passing, which is exactly when "there is an out" is worth saying.
+	 * last row's centre to the arrow's centre, pointing down the axis at the
+	 * door out. It was 2 — the end of the trip itself — and the arrow then
+	 * lay against the last photograph whenever the last row hung on the floor
+	 * (an odd curation ends on one floor picture). 8 is four times that: the
+	 * arrow now stands on the corridor BEYOND the ride's stop (AHEAD keeps
+	 * eight bore widths of it), a bore width and a half ahead of the eye when
+	 * the ride ends, inside the clear band of the fog. LENGTH does not read
+	 * it, so moving it neither lengthens the trip nor changes its pace.
 	 */
-	ARROW_AT: 2,
+	ARROW_AT: 8,
 	/** Pixels the arrow is rasterised at; it is seen at a grazing angle. */
 	ARROW_PX: 256,
 	/** Bore widths of tunnel kept beyond the far seam, so the fog closes it. */
