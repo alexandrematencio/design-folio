@@ -82,8 +82,15 @@ const GRID = {
 	 * the corridor was designed at, so the plateau keeps its pace.
 	 */
 	ROWS: Math.ceil(curation.length / 2) || 16,
-	/** Cells between two rows. 4 = one bore width: a square rhythm. */
-	PITCH: 4,
+	/**
+	 * Cells between two rows. 2 = half a bore width: rows alternate between
+	 * the floor/-x pair and the ceiling/+x pair, so every wall still gets a
+	 * photograph every 4 cells — one frame, one frame's depth of lattice —
+	 * and the photographs cover twice the wall they did at 4 (a square rhythm
+	 * that left seven eighths of the corridor bare). Halving it also halves
+	 * the run, and GALLERY.VH with it: the pace at the door does not change.
+	 */
+	PITCH: 2,
 	/** Cells from the seam pose to the first row, and past the last one. */
 	LEAD: 6,
 	/**
