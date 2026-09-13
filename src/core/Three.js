@@ -83,6 +83,11 @@ class Three {
 		this.scene = new Scene(this.options);
 		if (this.options.journey) {
 			this.galleryView = new Gallery(this.scene, this.context);
+			// The road follows the curation (GALLERY.VH, scenes/Gallery.js):
+			// v2.html's inline height is the 16-row value, rewritten here
+			// before Lenis measures the page.
+			const spacer = document.getElementById("scroll-spacer");
+			if (spacer) spacer.style.height = `${GALLERY.LOOP_VH + GALLERY.VH}vh`;
 		}
 		this.#setupLenis();
 

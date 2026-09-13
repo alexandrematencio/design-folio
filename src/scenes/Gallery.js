@@ -3,6 +3,7 @@ import { clamp, lerp, smoothstep } from "../utils/utils";
 import { JOURNEY, journeyH, progressPastExit, rideRate } from "./Scene";
 import { ArrowUp } from "lucide";
 import { iconDataUrl } from "../utils/icon";
+import curation from "virtual:curation";
 
 /**
  * THE GALLERY — the Selected Works, hung in the corridor BEYOND the hole.
@@ -73,12 +74,14 @@ const GRID = {
 	/** Cells across a wall. The cell is square: it is this deep as well. */
 	CELLS: 4,
 	/**
-	 * Photographs, two per row. 16 rows is the curation — 31 baked images, see
-	 * tools/curation.mjs. It is a constant rather than a count read off the
-	 * JSON because the LENGTH of the tunnel, and with it the pacing of the
-	 * 625vh plateau, must not depend on when a fetch happens to land.
+	 * Photographs, two per row: one row per pair of the funnel curation, baked
+	 * by tools/curation.mjs. Read off the BUNDLED manifest (virtual:curation,
+	 * vite.config.js), never off a fetch: the LENGTH of the tunnel, and with it
+	 * GALLERY.VH and the spacer, must be known before the first frame, not when
+	 * a request happens to land. An empty manifest falls back on the 16 rows
+	 * the corridor was designed at, so the plateau keeps its pace.
 	 */
-	ROWS: 16,
+	ROWS: Math.ceil(curation.length / 2) || 16,
 	/** Cells between two rows. 4 = one bore width: a square rhythm. */
 	PITCH: 4,
 	/** Cells from the seam pose to the first row, and past the last one. */
@@ -146,11 +149,20 @@ const LENGTH = (GRID.LEAD + (GRID.ROWS - 1) * GRID.PITCH + GRID.TAIL) * CELL;
  * the flow gauge. It used to be 750, and the corridor then started 26 % slow
  * and spent a tenth of the trip catching up; then 625 for the 18-width run
  * before the tail was cut.
+ *
+ * THE RUN IS NO LONGER A FIXED LENGTH: it has one row per pair of photographs
+ * (GRID.ROWS), so VH is computed from LENGTH instead of written down — 592 at
+ * 16 rows, and proportionally more for a longer curation, the corridor holding
+ * the conduit's speed whatever its length. core/Three.js writes LOOP_VH + VH on
+ * v2.html's spacer at start-up.
  */
+const PLATEAU = progressPastExit(JOURNEY.DOOR_OVER);
 export const GALLERY = {
 	LOOP_VH: 1200, // what v2.html's spacer was before the plateau
-	VH: 592, // what the plateau adds to it — solved, see above
-	PLATEAU: progressPastExit(JOURNEY.DOOR_OVER),
+	// What the plateau adds to it — solved, see above. Rounded to the vh: the
+	// corridor then runs within 0.1 % of the conduit's speed.
+	VH: Math.round((1200 * LENGTH) / rideRate(PLATEAU)),
+	PLATEAU,
 };
 
 /**
@@ -270,7 +282,7 @@ export default class Gallery {
 		this.live = false;
 		this.clearColour = new THREE.Color(PAPER);
 
-		/** curation.json, in curation order. Empty until the fetch lands. */
+		/** The funnel curation, in its order (virtual:curation). */
 		this.photos = [];
 		/** slug -> THREE.Texture, kept across rebuilds: a resize is not a reload. */
 		this.textures = new Map();
@@ -830,22 +842,16 @@ export default class Gallery {
 	/* ------------------------------------------------------------ the photos */
 
 	/**
-	 * The index is not a texture: three kilobytes of JSON, same origin, baked
-	 * at build time by tools/curation.mjs. Failing to read it leaves an empty
-	 * tunnel — a page that still works, which is the whole reason the images
-	 * are baked rather than pulled off Sanity's CDN at runtime.
+	 * The index is not a texture: a few kilobytes of JSON baked by
+	 * tools/curation.mjs and BUNDLED (virtual:curation) — GRID.ROWS is read off
+	 * it at import time, so a fetch would land too late. An empty index leaves
+	 * an empty tunnel: a page that still works, which is the whole reason the
+	 * images are baked rather than pulled off Sanity's CDN at runtime.
 	 */
-	async #loadIndex() {
-		try {
-			const response = await fetch("/curation.json");
-			if (!response.ok) return;
-			const data = await response.json();
-			if (!Array.isArray(data.photos) || data.photos.length === 0) return;
-			this.photos = data.photos;
-			this.dirty = true;
-		} catch {
-			/* an empty tunnel, and no noise in the console the shoot reads */
-		}
+	#loadIndex() {
+		if (curation.length === 0) return;
+		this.photos = curation;
+		this.dirty = true;
 	}
 
 	/** Start pulling the textures. Called on idle, and by the loop past 0.3. */

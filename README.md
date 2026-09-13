@@ -42,7 +42,7 @@ npm run build
 | `npm run shoot:v2` | pareil sur `v2.html`, avec le coin creux **vérifié** en plus |
 | `npm run measure` | remesure la boîte encrée du glyph et la compare au SVG |
 | `npm run bake` | recalcule ce que chaque face du solide voit de la pièce (~30 s) |
-| `npm run curation` | rapatrie les 31 photos de la curation amatencio-photo dans `public/curation/` et écrit `public/curation.json`. Idempotent ; `-- --force` retélécharge tout |
+| `npm run curation` | rapatrie les photos de la **funnel curation** d'amatencio-photo (Studio → Photos → Funnel curation) dans `public/curation/` et écrit `public/curation.json`. Idempotent ; `-- --force` retélécharge tout. **Rarement utile à la main** : `npm run dev` le relance à chaque chargement de page et `npm run build` avant chaque build (plugin `curation` de `vite.config.js`) |
 
 `npm run dev` sert les deux pages : `/` et `/v2.html`.
 `npm run shoot` accepte `--width 430 --height 930 --out tools/shots/narrow`.

@@ -1,201 +1,12 @@
 {
-  "generatedAt": "2026-09-09T15:25:50.771Z",
-  "source": "sanity:yh5i5diw/production siteSettings.curation",
+  "generatedAt": "2026-09-13T19:43:07.095Z",
+  "source": "sanity:yh5i5diw/production funnelCuration.photos",
   "photos": [
-    {
-      "slug": "teens-of-paris",
-      "title": "Teens of Paris",
-      "src": "/curation/teens-of-paris.jpg",
-      "width": 6356,
-      "height": 3133
-    },
-    {
-      "slug": "along-the-wall-1",
-      "title": "Along the wall [1]",
-      "src": "/curation/along-the-wall-1.jpg",
-      "width": 5835,
-      "height": 3890
-    },
-    {
-      "slug": "parking-bike",
-      "title": "Parking Bike",
-      "src": "/curation/parking-bike.jpg",
-      "width": 4000,
-      "height": 5333
-    },
-    {
-      "slug": "orthodox",
-      "title": "Orthodox",
-      "src": "/curation/orthodox.jpg",
-      "width": 4000,
-      "height": 2252
-    },
-    {
-      "slug": "composition-of-shapes",
-      "title": "Composition of shapes",
-      "src": "/curation/composition-of-shapes.jpg",
-      "width": 4337,
-      "height": 2720
-    },
-    {
-      "slug": "lavomatic",
-      "title": "Lavomatic",
-      "src": "/curation/lavomatic.jpg",
-      "width": 3920,
-      "height": 5227
-    },
-    {
-      "slug": "shadow-repetition",
-      "title": "Shadow Repetition",
-      "src": "/curation/shadow-repetition.jpg",
-      "width": 2613,
-      "height": 3919
-    },
-    {
-      "slug": "2026-paris-run",
-      "title": "Run",
-      "src": "/curation/2026-paris-run.jpg",
-      "width": 2048,
-      "height": 1365
-    },
-    {
-      "slug": "hocine-s-house",
-      "title": "Hocine's house",
-      "src": "/curation/hocine-s-house.jpg",
-      "width": 4608,
-      "height": 3072
-    },
-    {
-      "slug": "2026-paris-dalle-du-13eme",
-      "title": "Dalle du 13ème",
-      "src": "/curation/2026-paris-dalle-du-13eme.jpg",
-      "width": 3845,
-      "height": 5126
-    },
-    {
-      "slug": "nicolas",
-      "title": "Nicolas",
-      "src": "/curation/nicolas.jpg",
-      "width": 2557,
-      "height": 3450
-    },
-    {
-      "slug": "djerba-station-shell-day-2",
-      "title": "Djerba Station Shell Day [2]",
-      "src": "/curation/djerba-station-shell-day-2.jpg",
-      "width": 3456,
-      "height": 4608
-    },
     {
       "slug": "godly-birds",
       "title": "Godly Birds",
       "src": "/curation/godly-birds.jpg",
-      "width": 3198,
-      "height": 4308
-    },
-    {
-      "slug": "mariya-metro-station",
-      "title": "Mariya metro station",
-      "src": "/curation/mariya-metro-station.jpg",
-      "width": 1536,
-      "height": 2048
-    },
-    {
-      "slug": "sunken-boat",
-      "title": "Sunken Boat",
-      "src": "/curation/sunken-boat.jpg",
-      "width": 4589,
-      "height": 3059
-    },
-    {
-      "slug": "2026-paris-loubards-du-13",
-      "title": "Loubards du 13",
-      "src": "/curation/2026-paris-loubards-du-13.jpg",
-      "width": 2048,
-      "height": 1365
-    },
-    {
-      "slug": "2026-moscow-topo-heater",
-      "title": "Topo heater",
-      "src": "/curation/2026-moscow-topo-heater.jpg",
-      "width": 1536,
-      "height": 2048
-    },
-    {
-      "slug": "tri-umbrella",
-      "title": "Tri Umbrella",
-      "src": "/curation/tri-umbrella.jpg",
-      "width": 5309,
-      "height": 3539
-    },
-    {
-      "slug": "lavage-a-l-hydrojet-1",
-      "title": "Lavage à l'hydrojet [1]",
-      "src": "/curation/lavage-a-l-hydrojet-1.jpg",
-      "width": 3920,
-      "height": 5227
-    },
-    {
-      "slug": "paris-15-orion55",
-      "title": "Orion55 [1]",
-      "src": "/curation/paris-15-orion55.jpg",
-      "width": 4000,
-      "height": 5333
-    },
-    {
-      "slug": "hi",
-      "title": "\"Hii\"",
-      "src": "/curation/hi.jpg",
-      "width": 6000,
-      "height": 4000
-    },
-    {
-      "slug": "central-bus-station",
-      "title": "Central Bus Station",
-      "src": "/curation/central-bus-station.jpg",
-      "width": 4074,
-      "height": 2716
-    },
-    {
-      "slug": "ghost-soul",
-      "title": "Ghost Soul",
-      "src": "/curation/ghost-soul.jpg",
-      "width": 3706,
-      "height": 2471
-    },
-    {
-      "slug": "orly-1",
-      "title": "Orly [1]",
-      "src": "/curation/orly-1.jpg",
-      "width": 4608,
-      "height": 3371
-    },
-    {
-      "slug": "tunisia-dogs",
-      "title": "Tunisian Dogs",
-      "src": "/curation/tunisia-dogs.jpg",
-      "width": 4608,
-      "height": 3072
-    },
-    {
-      "slug": "red-descent",
-      "title": "Red Descent",
-      "src": "/curation/red-descent.jpg",
-      "width": 6000,
-      "height": 4000
-    },
-    {
-      "slug": "2026-peredelkino-typewriter",
-      "title": "Typewriter",
-      "src": "/curation/2026-peredelkino-typewriter.jpg",
-      "width": 2048,
-      "height": 1365
-    },
-    {
-      "slug": "2020-paris-cyclist",
-      "title": "Cyclist",
-      "src": "/curation/2020-paris-cyclist.jpg",
-      "width": 1536,
+      "width": 1520,
       "height": 2048
     },
     {
@@ -206,18 +17,305 @@
       "height": 1366
     },
     {
+      "slug": "2024-djerba-beach-composition-2",
+      "title": "Beach Composition",
+      "src": "/curation/2024-djerba-beach-composition-2.jpg",
+      "width": 2048,
+      "height": 1284
+    },
+    {
+      "slug": "2023-biarritz-bay-watch",
+      "title": "Biarritz Bay Watch",
+      "src": "/curation/2023-biarritz-bay-watch.jpg",
+      "width": 3124,
+      "height": 4166
+    },
+    {
+      "slug": "2026-moscow-coffee-shop",
+      "title": "Coffee Shop",
+      "src": "/curation/2026-moscow-coffee-shop.jpg",
+      "width": 1536,
+      "height": 2048
+    },
+    {
+      "slug": "2026-paris-chopstick-dinner",
+      "title": "Chopstick Dinner",
+      "src": "/curation/2026-paris-chopstick-dinner.jpg",
+      "width": 2048,
+      "height": 1365
+    },
+    {
+      "slug": "face-off",
+      "title": "Face-off",
+      "src": "/curation/face-off.jpg",
+      "width": 2048,
+      "height": 1365
+    },
+    {
+      "slug": "lavomatic",
+      "title": "Lavomatic",
+      "src": "/curation/lavomatic.jpg",
+      "width": 1536,
+      "height": 2048
+    },
+    {
+      "slug": "untitled",
+      "title": "Untitled",
+      "src": "/curation/untitled.jpg",
+      "width": 1536,
+      "height": 2048
+    },
+    {
+      "slug": "2026-moscow-river-in-moscow",
+      "title": "River in Moscow",
+      "src": "/curation/2026-moscow-river-in-moscow.jpg",
+      "width": 1536,
+      "height": 2048
+    },
+    {
+      "slug": "mariya-metro-station",
+      "title": "Mariya metro station",
+      "src": "/curation/mariya-metro-station.jpg",
+      "width": 1536,
+      "height": 2048
+    },
+    {
+      "slug": "writer-s-desk",
+      "title": "Writer's desk",
+      "src": "/curation/writer-s-desk.jpg",
+      "width": 2048,
+      "height": 1365
+    },
+    {
+      "slug": "djerba-beach-girls-1",
+      "title": "Djerba beach girls, Pt.1",
+      "src": "/curation/djerba-beach-girls-1.jpg",
+      "width": 2048,
+      "height": 1365
+    },
+    {
+      "slug": "hocine-s-house",
+      "title": "Hocine's house",
+      "src": "/curation/hocine-s-house.jpg",
+      "width": 2048,
+      "height": 1365
+    },
+    {
+      "slug": "djerba-cafe-old-gamers",
+      "title": "Djerba Cafe Old Gamers",
+      "src": "/curation/djerba-cafe-old-gamers.jpg",
+      "width": 2048,
+      "height": 1366
+    },
+    {
+      "slug": "fantasia-rider-1",
+      "title": "Fantasia Rider [1]",
+      "src": "/curation/fantasia-rider-1.jpg",
+      "width": 2048,
+      "height": 1365
+    },
+    {
+      "slug": "laguna-fishboat",
+      "title": "Laguna fishboat",
+      "src": "/curation/laguna-fishboat.jpg",
+      "width": 1536,
+      "height": 2048
+    },
+    {
+      "slug": "2024-djerba-girls-beach-djerba-2",
+      "title": "Girls Beach Djerba [2]",
+      "src": "/curation/2024-djerba-girls-beach-djerba-2.jpg",
+      "width": 1536,
+      "height": 2048
+    },
+    {
+      "slug": "2026-moscow-moscow-workers-3",
+      "title": "Moscow workers [3]",
+      "src": "/curation/2026-moscow-moscow-workers-3.jpg",
+      "width": 2048,
+      "height": 1365
+    },
+    {
+      "slug": "nicolas",
+      "title": "Nicolas",
+      "src": "/curation/nicolas.jpg",
+      "width": 1518,
+      "height": 2048
+    },
+    {
+      "slug": "teens-of-paris",
+      "title": "Teens of Paris",
+      "src": "/curation/teens-of-paris.jpg",
+      "width": 2048,
+      "height": 1009
+    },
+    {
+      "slug": "2026-paris-loubards-du-13",
+      "title": "Loubards du 13",
+      "src": "/curation/2026-paris-loubards-du-13.jpg",
+      "width": 2048,
+      "height": 1365
+    },
+    {
+      "slug": "2026-paris-football-3",
+      "title": "Football [3]",
+      "src": "/curation/2026-paris-football-3.jpg",
+      "width": 2048,
+      "height": 1365
+    },
+    {
+      "slug": "2026-peredelkino-songe",
+      "title": "Songe",
+      "src": "/curation/2026-peredelkino-songe.jpg",
+      "width": 2048,
+      "height": 1365
+    },
+    {
+      "slug": "2026-moscow-dostoyeveski",
+      "title": "Dostoyeveski",
+      "src": "/curation/2026-moscow-dostoyeveski.jpg",
+      "width": 1536,
+      "height": 2048
+    },
+    {
       "slug": "dystopia",
       "title": "Dystopia",
       "src": "/curation/dystopia.jpg",
-      "width": 5713,
-      "height": 3809
+      "width": 2048,
+      "height": 1365
     },
     {
-      "slug": "horse-rider",
-      "title": "Horse Rider",
-      "src": "/curation/horse-rider.jpg",
-      "width": 4608,
-      "height": 3072
+      "slug": "2026-moscow-moscow-workers-2",
+      "title": "Moscow workers [2]",
+      "src": "/curation/2026-moscow-moscow-workers-2.jpg",
+      "width": 2048,
+      "height": 1365
+    },
+    {
+      "slug": "menzel",
+      "title": "Menzel",
+      "src": "/curation/menzel.jpg",
+      "width": 2048,
+      "height": 1138
+    },
+    {
+      "slug": "2025-djerba-canvas-1",
+      "title": "Canvas [1]",
+      "src": "/curation/2025-djerba-canvas-1.jpg",
+      "width": 1536,
+      "height": 2048
+    },
+    {
+      "slug": "2025-djerba-fisherkid",
+      "title": "Fisherkid",
+      "src": "/curation/2025-djerba-fisherkid.jpg",
+      "width": 1536,
+      "height": 2048
+    },
+    {
+      "slug": "fishermen-at-sunset",
+      "title": "Fishermen at sunset",
+      "src": "/curation/fishermen-at-sunset.jpg",
+      "width": 2048,
+      "height": 1365
+    },
+    {
+      "slug": "2026-paris-run",
+      "title": "Run",
+      "src": "/curation/2026-paris-run.jpg",
+      "width": 2048,
+      "height": 1365
+    },
+    {
+      "slug": "fading",
+      "title": "Fading",
+      "src": "/curation/fading.jpg",
+      "width": 1536,
+      "height": 2048
+    },
+    {
+      "slug": "under-the-bridge",
+      "title": "Under the bridge",
+      "src": "/curation/under-the-bridge.jpg",
+      "width": 1536,
+      "height": 2048
+    },
+    {
+      "slug": "along-the-wall-1",
+      "title": "Along the wall [1]",
+      "src": "/curation/along-the-wall-1.jpg",
+      "width": 2048,
+      "height": 1365
+    },
+    {
+      "slug": "paris-bar-crypto",
+      "title": "Paris Bar Crypto",
+      "src": "/curation/paris-bar-crypto.jpg",
+      "width": 1536,
+      "height": 2048
+    },
+    {
+      "slug": "ghost-soul",
+      "title": "Ghost Soul",
+      "src": "/curation/ghost-soul.jpg",
+      "width": 2048,
+      "height": 1366
+    },
+    {
+      "slug": "2021-paris-archs",
+      "title": "Archs",
+      "src": "/curation/2021-paris-archs.jpg",
+      "width": 2048,
+      "height": 1202
+    },
+    {
+      "slug": "2026-villejuif-seats",
+      "title": "Seats",
+      "src": "/curation/2026-villejuif-seats.jpg",
+      "width": 2048,
+      "height": 2048
+    },
+    {
+      "slug": "hi",
+      "title": "\"Hii\"",
+      "src": "/curation/hi.jpg",
+      "width": 2048,
+      "height": 1365
+    },
+    {
+      "slug": "2026-villejuif-topo",
+      "title": "Topo",
+      "src": "/curation/2026-villejuif-topo.jpg",
+      "width": 2048,
+      "height": 1365
+    },
+    {
+      "slug": "unnamed",
+      "title": "Unnamed",
+      "src": "/curation/unnamed.jpg",
+      "width": 2048,
+      "height": 1365
+    },
+    {
+      "slug": "2026-hanoi-vietnam-cleaning",
+      "title": "Vietnam Streets",
+      "src": "/curation/2026-hanoi-vietnam-cleaning.jpg",
+      "width": 1536,
+      "height": 2048
+    },
+    {
+      "slug": "2024-djerba-bus-n-tree",
+      "title": "Bus n tree",
+      "src": "/curation/2024-djerba-bus-n-tree.jpg",
+      "width": 1536,
+      "height": 2048
+    },
+    {
+      "slug": "giona",
+      "title": "Giona",
+      "src": "/curation/giona.jpg",
+      "width": 2048,
+      "height": 1197
     }
   ]
 }
