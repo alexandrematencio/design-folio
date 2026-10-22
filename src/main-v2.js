@@ -351,6 +351,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
 	window.addEventListener("click", (event) => {
 		if (!galleryLive()) return;
+		// The About link sits over the corridor: its click is its own.
+		if (event.target.closest?.("#about-link")) return;
 		const at = toNdc(event);
 		if (!three.galleryView.pick(at.x, at.y)) return;
 
