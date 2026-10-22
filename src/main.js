@@ -1,13 +1,18 @@
 import Three from "./core/Three";
 import { attachPageLinks } from "./utils/pageLinks";
+import { mountStatic } from "./static";
+import { bootScene } from "./utils/bootScene";
 
 // style.css is linked from index.html's head, not imported here: the DOM
 // page is on screen from the first paint and has to be styled by then.
 
 document.addEventListener("DOMContentLoaded", () => {
-	const container = document.querySelector("#app");
-	const three = new Three(container);
-	three.run();
+	// No WebGL: the static page (src/static.js) instead of the scene.
+	const three = bootScene(() => new Three(document.querySelector("#app")));
+	if (!three) {
+		mountStatic();
+		return;
+	}
 
 	// The page's links, clickable on the projection. index.html has none
 	// today; the layer costs nothing and is there the day it gets one.

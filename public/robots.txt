@@ -1,3 +1,33 @@
-# Everything is meant to be read. Add a Sitemap: line once the domain is set.
+# amatencio.com — the door to the other sites, and the About page.
+#
+# Same rules as photo.amatencio.com (amatencio-photo, app/robots.ts): the
+# crawlers that TRAIN models are refused, the ones that SEARCH and cite stay
+# welcome — the site wants to be found, not ingested.
+
+User-agent: GPTBot
+User-agent: ClaudeBot
+User-agent: Claude-Web
+User-agent: anthropic-ai
+User-agent: CCBot
+User-agent: Google-Extended
+User-agent: Applebot-Extended
+User-agent: Bytespider
+User-agent: Amazonbot
+User-agent: meta-externalagent
+User-agent: meta-externalfetcher
+User-agent: FacebookBot
+User-agent: cohere-ai
+User-agent: Diffbot
+User-agent: ImagesiftBot
+User-agent: omgili
+User-agent: omgilibot
+User-agent: YouBot
+User-agent: Ai2Bot
+User-agent: PanguBot
+User-agent: Webzio-Extended
+Disallow: /
+
 User-agent: *
 Allow: /
+
+Sitemap: https://amatencio.com/sitemap.xml

@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import { bakeCuration, MANIFEST } from "./tools/curation.mjs";
+import { bakeHubSeo, readHubSeo } from "./tools/hub-seo.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -82,12 +83,47 @@ function curation() {
 	};
 }
 
+/**
+ * WHAT GOOGLE SHOWS OF THE DOOR, from the Studio (tools/hub-seo.mjs says
+ * where). The title and description of v3.html are placeholders —
+ * __HUB_TITLE__, __HUB_DESCRIPTION__ — filled here from tools/hub-seo.json,
+ * which is refreshed at dev start and before a build. Offline, the file on
+ * disk is used as it is. The other pages are left alone.
+ */
+function hubSeo() {
+	const escape = (s) =>
+		s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+	const refresh = () =>
+		bakeHubSeo({ log: (m) => console.log(`[hub-seo] ${m}`) }).catch((error) =>
+			console.warn(`[hub-seo] not refreshed, using tools/hub-seo.json as it is — ${error.message}`),
+		);
+	return {
+		name: "hub-seo",
+		async buildStart() {
+			await refresh();
+		},
+		configureServer() {
+			refresh();
+		},
+		transformIndexHtml: {
+			order: "pre",
+			async handler(html) {
+				if (!html.includes("__HUB_TITLE__")) return html;
+				const seo = await readHubSeo();
+				return html
+					.replaceAll("__HUB_TITLE__", escape(seo.title))
+					.replaceAll("__HUB_DESCRIPTION__", escape(seo.description));
+			},
+		},
+	};
+}
+
 export default defineConfig({
 	// Root deploy. For GitHub Pages under a repo path, set this to
 	// "/<repo-name>/" — every asset URL in the app goes through
 	// import.meta.env.BASE_URL, so this is the only line to change.
 	base: "/",
-	plugins: [curation()],
+	plugins: [curation(), hubSeo()],
 	build: {
 		// The .hdr is binary and must stay a file; Vite would otherwise
 		// inline small assets as base64 and RGBELoader cannot read that.
@@ -100,6 +136,10 @@ export default defineConfig({
 			input: {
 				main: resolve(__dirname, "index.html"),
 				v2: resolve(__dirname, "v2.html"),
+				// v2 with the copy taken out: the title, "(scroll)", and the
+				// glyph in the middle of the frame (Scene.js, LAYOUT_CENTRED).
+				// THE DOOR of amatencio.com: Caddy serves it at /.
+				v3: resolve(__dirname, "v3.html"),
 			},
 		},
 	},

@@ -3,6 +3,8 @@ import { ORBIT } from "./utils/utils";
 import { Mouse } from "lucide";
 import { iconSvg } from "./utils/icon";
 import { attachPageLinks } from "./utils/pageLinks";
+import { mountStatic } from "./static";
+import { bootScene } from "./utils/bootScene";
 
 // style.css is linked from v2.html's head, not imported here: the DOM page
 // is on screen from the first paint and has to be styled by then.
@@ -45,9 +47,13 @@ import { attachPageLinks } from "./utils/pageLinks";
  * the portfolio opens on a white screen.
  */
 const DESTINATIONS = {
-	agency: { url: "https://www.aaxlo.com", veil: "#1e1e1e" },
+	// The journal opens on its own paper, no splash: the veil is that paper.
+	journal: { url: "https://blog.amatencio.com/", veil: "#fafaf8" },
+	// Trailing slash: it is what `a.href` reads back, and the dev check below
+	// compares the two.
+	agency: { url: "https://www.aaxlo.com/", veil: "#1e1e1e" },
 	photography: {
-		url: "https://alexandrematencio.github.io/photo-portfolio",
+		url: "https://photo.amatencio.com/",
 		veil: "#ffffff",
 	},
 	design: null,
@@ -92,9 +98,21 @@ const readReturn = () => {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-	const container = document.querySelector("#app");
-	const three = new Three(container, { shading: "one-material", journey: true });
-	three.run();
+	// No WebGL: the static page (src/static.js), and none of what follows —
+	// every line below drives the scene.
+	const three = bootScene(() =>
+		new Three(document.querySelector("#app"), {
+			shading: "one-material",
+			journey: true,
+			// v3.html is this same entry with the copy removed and the glyph
+			// in the middle: the page says so on <html data-layout>.
+			layout: document.documentElement.dataset.layout ?? "default",
+		}),
+	);
+	if (!three) {
+		mountStatic();
+		return;
+	}
 
 	// The return parks the scroll itself, at a position it computes. Letting
 	// the browser restore its own offset a beat later would fight that and
@@ -102,7 +120,30 @@ document.addEventListener("DOMContentLoaded", () => {
 	if ("scrollRestoration" in history) history.scrollRestoration = "manual";
 
 	const veil = document.querySelector("#dive-veil");
-	const items = [...document.querySelectorAll(".step-menu__item")];
+	// In slot order — risers top to bottom, then the floor — whatever the
+	// order of the markup.
+	const items = [...document.querySelectorAll(".step-menu__item")].sort(
+		(a, b) => Number(a.dataset.step) - Number(b.dataset.step),
+	);
+
+	// The names are carved into the stair (scenes/StepEngravings.js), and the
+	// carving is read off this very <nav>: the links crawlers follow and the
+	// letters visitors see cannot drift apart. The DOM items stay, invisible,
+	// as the hit targets and the keyboard's way in.
+	three.scene.setMenu(
+		items.map((el) => ({
+			text: el.textContent.trim().toUpperCase(),
+			note: el.dataset.note,
+		})),
+	);
+	for (const [i, item] of items.entries()) {
+		const on = () => three.scene.setMenuHover(i);
+		const off = () => three.scene.setMenuHover(null);
+		item.addEventListener("pointerenter", on);
+		item.addEventListener("pointerleave", off);
+		item.addEventListener("focus", on);
+		item.addEventListener("blur", off);
+	}
 	let navigatedTo = null;
 
 	/**
@@ -110,9 +151,11 @@ document.addEventListener("DOMContentLoaded", () => {
 	 * visitor who lands cold on the rest frame, and only to them: a return
 	 * from a dive or a photograph arrives elsewhere and is driven by an
 	 * override, and a tool (shoot, flow) drives the page with no visitor at
-	 * all. The first scroll retires it for the session — the loop passes
-	 * through rest every lap, and a cue that came back each time would be a
-	 * nag, not a hint.
+	 * all. Alexandre, 2026-10-22: it comes BACK whenever the visitor settles
+	 * at rest again — the first cut retired it for good at the first scroll,
+	 * and back at the top the page looked as if it had lost its cue. Settled
+	 * means CUE_SETTLE ms at rest, so a lap of the loop passing through rest
+	 * does not flash it.
 	 */
 	const cue = document.querySelector("#scroll-cue");
 	cue.innerHTML = iconSvg(Mouse, {
@@ -122,6 +165,8 @@ document.addEventListener("DOMContentLoaded", () => {
 		class: "scroll-cue",
 	});
 	let cueSpent = false;
+	let restSince = null;
+	const CUE_SETTLE = 1200;
 
 	/** Runs `fn` once the browser has actually painted the state set just now. */
 	const afterFrame = (fn) =>
@@ -197,13 +242,33 @@ document.addEventListener("DOMContentLoaded", () => {
 	// The page's links (the LENIA one, today), clickable on the projection.
 	const pageLinks = attachPageLinks(three);
 
+	/** The cut without a dive: the veil fades up, then the page goes. */
+	function veilOut(dest, item) {
+		navigatedTo = dest.url;
+		three.lenis?.stop();
+		veil.style.background = dest.veil;
+		try {
+			sessionStorage.setItem(
+				RETURN_KEY,
+				JSON.stringify({ step: Number(item.dataset.step), dest: item.dataset.dest }),
+			);
+		} catch {
+			// Never a reason not to go.
+		}
+		veil.style.transition = `opacity ${GALLERY_VEIL}s ease`;
+		afterFrame(() => {
+			veil.style.opacity = "1";
+			setTimeout(() => window.location.assign(dest.url), GALLERY_VEIL * 1000);
+		});
+	}
+
 	for (const item of items) {
 		if (import.meta.env.DEV && item.href && item.href !== DESTINATIONS[item.dataset.dest]?.url) {
 			console.warn(`step-menu: href of "${item.dataset.dest}" differs from DESTINATIONS`);
 		}
 		item.addEventListener("click", (event) => {
 			const dest = DESTINATIONS[item.dataset.dest];
-			if (!dest || three.scene.dive) return;
+			if (!dest || three.scene.dive || navigatedTo) return;
 
 			// A modified click (middle, ctrl/cmd, shift) is a request for a
 			// new tab or window: the href is real, let the browser have it.
@@ -217,6 +282,17 @@ document.addEventListener("DOMContentLoaded", () => {
 			// the somersault.
 			if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
 				window.location.assign(dest.url);
+				return;
+			}
+
+			// The AAXLO mark is clickable wherever it is seen, not only at the
+			// menu (see the tick). Away from the step view there is no dive to
+			// play — the somersault is built on the orbit's camera, and on the
+			// tunnel leg another camera draws — so it whitens out the way a
+			// photograph does, into the agency's first frame. The record is
+			// the same as the dive's: the return lands on the menu.
+			if (three.scene.stepAnchors().facing <= CLICKABLE_FROM) {
+				veilOut(dest, item);
 				return;
 			}
 
@@ -338,16 +414,32 @@ document.addEventListener("DOMContentLoaded", () => {
 		const p = three.scene.progress;
 		const atRest = p < 0.002 || p > 0.998;
 		if (driven || !atRest) cueSpent = true;
-		cue.classList.toggle("is-visible", !cueSpent && atRest);
+		const now = performance.now();
+		restSince = atRest && !driven ? (restSince ?? now) : null;
+		const settled = restSince !== null && now - restSince > CUE_SETTLE;
+		cue.classList.toggle("is-visible", atRest && !driven && (!cueSpent || settled));
 		const menuOpacity = facing * (dive ? Math.max(0, 1 - dive.t * 3) : 1);
 
 		for (const [i, step] of steps.entries()) {
 			const el = items[i];
 			if (!el) continue;
 			el.style.transform = `translate(-50%, -50%) translate(${step.x}px, ${step.y}px)`;
+			// Carved menu: the item is the label's footprint, so the click and
+			// the focus ring land on the engraving itself.
+			if (step.width) {
+				el.style.width = `${step.width.toFixed(1)}px`;
+				el.style.height = `${step.height.toFixed(1)}px`;
+			}
 			el.style.opacity = menuOpacity.toFixed(3);
-			el.style.pointerEvents =
-				!dive && step.onScreen && facing > CLICKABLE_FROM ? "auto" : "none";
+			// The carved names take the pointer at the menu only; the AAXLO
+			// mark whenever any of it can be seen (Scene.stepAnchors) — but
+			// never inside the corridor, whose walls are not the stair and
+			// would hide it from the eye without the raycast knowing.
+			const clickable =
+				"seen" in step
+					? step.seen && !(three.galleryView?.live)
+					: step.onScreen && facing > CLICKABLE_FROM;
+			el.style.pointerEvents = !dive && !navigatedTo && clickable ? "auto" : "none";
 		}
 
 		// The hover is resolved HERE rather than on pointermove: the corridor

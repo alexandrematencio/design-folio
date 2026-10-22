@@ -48,12 +48,23 @@ const SOURCE = `sanity:${PROJECT}/${DATASET} funnelCuration.photos`;
 const QUERY = `*[_id=="funnelCuration"][0].photos[]->{title,"slug":slug.current,"url":image.asset->url,"width":image.asset->metadata.dimensions.width,"height":image.asset->metadata.dimensions.height}`;
 
 /**
- * 1024 px on the long side is the mobile GPU ceiling we allow ourselves:
- * ~4 MB of VRAM per texture. `fm=jpg` because a few originals are PNG or
- * HEIC and we want one predictable extension on disk; q=82 is where the
- * artefacts stop being visible on a plane seen edge-on.
+ * 768 px ON THE LONG SIDE — `w` and `h` together with `fit=max`, so a
+ * portrait is bounded like a landscape (`w=1024` alone used to hand back
+ * 1024 x 1536 portraits) and nothing smaller is ever scaled up.
+ *
+ * MEASURED, not guessed (2026-09-14, every frame projected along the whole
+ * plateau, in device pixels — the renderer caps the ratio at 2): the long side
+ * of a photograph on screen is ~150 px half the time and covers 768 px for
+ * 99 % of its screen time on a Retina laptop, a 2560 monitor and a phone
+ * alike. Only the last instant of a picture leaving the frame goes past it,
+ * up to 1124 px, moving too fast to be read. Texture memory falls in
+ * proportion — it is what a hundred photographs cost a phone's GPU.
+ *
+ * `fm=jpg` because a few originals are PNG or HEIC and we want one
+ * predictable extension on disk; q=82 is where the artefacts stop being
+ * visible on a plane seen edge-on.
  */
-const TRANSFORM = "?w=1024&fm=jpg&q=82";
+const TRANSFORM = "?w=768&h=768&fit=max&fm=jpg&q=82";
 
 const CONCURRENCY = 4;
 const ATTEMPTS = 2; // one try, one retry — a flaky CDN hop, not a broken URL
@@ -67,7 +78,17 @@ const IMAGE_TIMEOUT = 20000;
  * and a timestamp alone must not reload a page). Throws on any failure and
  * leaves the files on disk as they were — the caller decides how loud to be.
  */
-export async function bakeCuration({ force = false, log = console.log } = {}) {
+export async function bakeCuration({ force: forced = false, log = console.log } = {}) {
+	/**
+	 * The files on disk were cut with the TRANSFORM the manifest records: a
+	 * new size makes every one of them stale, so it re-downloads them all —
+	 * the cache is only a cache for the same cut.
+	 */
+	const previous = await readFile(MANIFEST, "utf8")
+		.then((raw) => JSON.parse(raw))
+		.catch(() => null);
+	const force = forced || previous?.transform !== TRANSFORM;
+
 	const url = `https://${PROJECT}.api.sanity.io/${API_VERSION}/data/query/${DATASET}?query=${encodeURIComponent(QUERY)}`;
 	const res = await fetch(url, { signal: AbortSignal.timeout(QUERY_TIMEOUT) });
 	if (!res.ok) throw new Error(`Sanity answered ${res.status} ${res.statusText}`);
@@ -168,14 +189,18 @@ export async function bakeCuration({ force = false, log = console.log } = {}) {
 	/* ---------------------------------------------------------- the manifest */
 
 	const entries = photos.map(({ slug, title, src, width, height }) => ({ slug, title, src, width, height }));
-	const previous = await readFile(MANIFEST, "utf8")
-		.then((raw) => JSON.parse(raw))
-		.catch(() => null);
 	const changed =
-		previous?.source !== SOURCE || JSON.stringify(previous?.photos) !== JSON.stringify(entries);
+		previous?.source !== SOURCE ||
+		previous?.transform !== TRANSFORM ||
+		JSON.stringify(previous?.photos) !== JSON.stringify(entries);
 
 	if (changed) {
-		const manifest = { generatedAt: new Date().toISOString(), source: SOURCE, photos: entries };
+		const manifest = {
+			generatedAt: new Date().toISOString(),
+			source: SOURCE,
+			transform: TRANSFORM,
+			photos: entries,
+		};
 		await writeFile(MANIFEST, `${JSON.stringify(manifest, null, 2)}\n`);
 
 		/**
