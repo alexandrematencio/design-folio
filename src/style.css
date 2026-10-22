@@ -417,6 +417,30 @@ body {
 	pointer-events: none;
 }
 
+/* ------------------------------------------------------------ the about link */
+
+/* Top right, on the page's gutter: body size, not menu size (Alexandre,
+   2026-10-22). Above the scene and the step menu, below the dive veil. */
+#about-link {
+	position: fixed;
+	top: 1.5rem;
+	right: var(--gutter);
+	z-index: 15;
+	font-family: var(--font-display);
+	font-weight: 700;
+	font-size: 1rem;
+	line-height: 1;
+	letter-spacing: -0.01em;
+	color: var(--color-fg);
+	text-decoration: none;
+}
+
+#about-link:hover,
+#about-link:focus-visible {
+	text-decoration: underline;
+	text-underline-offset: 0.18em;
+}
+
 /* ------------------------------------------------------------ the step menu */
 
 /* Three labels, one per step front. Position and opacity are driven per frame
