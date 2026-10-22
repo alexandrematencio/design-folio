@@ -9,6 +9,17 @@
       a still. Anything that moves is simply never seen.
    2. Fonts must be self-hosted and inlined (see collectDocumentCss.js). The
       SVG <foreignObject> runs sandboxed and cannot reach the network.
+
+   TWO LAYOUTS, ONE STYLESHEET. The DEFAULT is the static page: the hero in
+   the document flow, the glyph as an <img>, the Selected Works as a grid
+   below the fold. It is what a browser without WebGL gets (LibreWolf, Tor, a
+   hardened Firefox — see src/static.js), and what a crawler or a no-script
+   visitor gets. The inline probe in each page's <head> adds `is-3d` to <html>
+   before the first paint when a context CAN be made, and every rule the
+   scene needs — the fixed host under the canvas, the scroll spacer, the
+   menu — is scoped under that class. Rules under #page itself are NOT
+   scoped: they are the texture, and inside the foreignObject there is no
+   <html> to carry a class.
    -------------------------------------------------------------------------- */
 
 /* Inter, self-hosted. Brand rule: zero third-party font request. */
@@ -84,10 +95,16 @@ body {
    turn — about one screen of scrolling away, which is close enough to find by
    accident and far enough not to trip over. */
 #scroll-spacer {
+	/* The scene's road. The static page has no Lenis and no road. */
+	display: none;
 	position: relative;
 	width: 1px;
 	height: 800vh;
 	pointer-events: none;
+}
+
+.is-3d #scroll-spacer {
+	display: block;
 }
 
 /* The live DOM page — the source of the raster, and the copy crawlers and
@@ -100,6 +117,16 @@ body {
    first paint IS the rest frame, before WebGL has drawn anything.
    z-index 0, not -1: -1 would fall behind body's own background. */
 #page-host {
+	/* Static: the hero is the first screen of an ordinary document. The text
+	   is text — selectable, its links under the pointer. svh so that on a
+	   phone the copy sits above the toolbar, not under it. */
+	position: relative;
+	width: 100%;
+	height: 100vh;
+	height: 100svh;
+}
+
+.is-3d #page-host {
 	position: fixed;
 	top: 0;
 	left: 0;
@@ -107,6 +134,30 @@ body {
 	height: 100vh;
 	pointer-events: none;
 	z-index: 0;
+}
+
+/* The glyph of the static page: the SVG itself (99.1 % pixel IoU with the
+   solid's ink, tools/measure-glyph-ink.py), sized and placed exactly as
+   LAYOUT in scenes/Scene.js places the ink at rest — NDC (0.44, 0.06) is
+   72 % / 47 % of the frame, and the ink is 52 % of its height. The <img> is a
+   sibling of #page, not a child: #page is what gets rasterized, and a
+   foreignObject cannot load an image from a URL. */
+#static-glyph {
+	position: absolute;
+	left: 72%;
+	top: 47%;
+	height: 52%;
+	width: auto;
+	transform: translate(-50%, -50%);
+	/* Above #page, which is positioned, painted, and later in the DOM: without
+	   this the paper covers the logo. The copy never reaches this third. */
+	z-index: 1;
+	pointer-events: none;
+	user-select: none;
+}
+
+.is-3d #static-glyph {
+	display: none;
 }
 
 /* ---------------------------------------------------------------- the page */
@@ -169,6 +220,44 @@ body {
 .copy em {
 	font-style: normal;
 	font-weight: 700;
+}
+
+/* v3: the one line left under the title, as small as the page's hint.
+   The gap of .page__inner is pulled back so it reads as the title's own
+   caption, not as a second block. */
+.scroll-word {
+	margin-top: calc(-1 * clamp(1.5rem, 4vh, 3rem) + 0.75rem);
+	font-family: var(--font-editorial);
+	font-weight: 500;
+	font-size: 12px;
+	letter-spacing: 0;
+	color: var(--color-fg-muted);
+}
+
+/* v3, the door: the title at half the size of the other pages' and, with
+   its "(scroll)", centred over the glyph. On #page itself rather than on
+   <html>: inside the foreignObject there is no <html> to carry a class. */
+.page--door .page__inner {
+	align-items: center;
+	text-align: center;
+}
+
+.page--door .display {
+	font-size: clamp(1.375rem, 4.7vw, 4.75rem);
+	max-width: none;
+}
+
+/* The full name, inside the h1 so search engines read it as the page's
+   title, set small under the greeting: whoever searches the name with the
+   middle name finds it in the visible text, not only in the metadata. */
+.page--door .full-name {
+	display: block;
+	margin-top: 0.6em;
+	font-family: var(--font-editorial);
+	font-weight: 500;
+	font-size: 13px;
+	line-height: 1.3;
+	letter-spacing: 0;
 }
 
 /* Placeholder for the sentence that arrived truncated in the brief. */
@@ -266,6 +355,33 @@ body {
 	.display {
 		max-width: 100%;
 	}
+
+	/* LAYOUT.narrow: NDC (0.18, 0.4), 30 % of the height. */
+	#static-glyph {
+		left: 59%;
+		top: 30%;
+		height: 30%;
+	}
+}
+
+/* v3 (html[data-layout="centred"]): the glyph in the middle of the frame,
+   as LAYOUT_CENTRED in Scene.js puts it — NDC (0, 0), same heights. Outside
+   #page, so the attribute on <html> reaches it. */
+[data-layout="centred"] #static-glyph {
+	left: 50%;
+	top: 50%;
+	/* The scene shrinks the glyph to clear the title block on short screens
+	   (Scene.js, clearText); 13rem is that block, gutter included, at its
+	   largest. */
+	height: min(52%, calc(100% - 26rem));
+}
+
+/* LAYOUT_CENTRED.narrow: 30 % of the height. After the rule above, which it
+   must override. */
+@media (max-width: 900px) {
+	[data-layout="centred"] #static-glyph {
+		height: min(30%, calc(100% - 20rem));
+	}
 }
 
 /* ------------------------------------------------------- links in the copy */
@@ -307,42 +423,54 @@ body {
    from stepAnchors() in main-v2.js; here only the look. The nav itself never
    captures the pointer — only the items do, and only once readable. */
 #step-menu {
+	/* Glued to the step fronts by main-v2.js: without the scene there are no
+	   step fronts. The static page carries the same links in its footer. */
+	display: none;
 	position: fixed;
 	inset: 0;
 	pointer-events: none;
 	z-index: 10;
 }
 
+.is-3d #step-menu {
+	display: block;
+}
+
+/* The names are CARVED into the stair now (scenes/StepEngravings.js): the
+   letters are geometry, and these items are their invisible hit targets,
+   sized every frame to the engraving's footprint (main-v2.js). The text
+   stays in the markup for crawlers and screen readers — transparent, never
+   hidden. Hover and focus deepen the carve (Scene.setMenuHover), so the
+   only thing painted here is the keyboard's focus ring. */
 .step-menu__item {
 	position: absolute;
 	top: 0;
 	left: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
 	transform: translate(-50%, -50%);
 	border: 0;
 	background: none;
-	padding: 0.2em 0.5em;
+	padding: 0;
 	font-family: var(--font-display);
 	font-weight: 700;
 	font-size: clamp(1.1rem, 2.6vw, 2.25rem);
-	letter-spacing: 0.02em;
 	text-transform: uppercase;
-	/* On the cobalt risers, the label is paper — same negative-space rule as
-	   the treads' white. */
-	color: var(--color-bg);
+	color: transparent;
 	opacity: 0;
 	cursor: pointer;
 	white-space: nowrap;
-	/* Two of the three are real <a href> now (crawlable, middle-clickable);
-	   the reset keeps them looking like the button they replaced. */
+	overflow: hidden;
 	text-decoration: none;
+	outline: none;
 }
 
-.step-menu__item:hover,
+/* Paper ring inside a cobalt one: readable on the risers AND on the floor. */
 .step-menu__item:focus-visible {
-	text-decoration: underline;
-	text-underline-offset: 0.18em;
-	text-decoration-thickness: 0.06em;
-	outline: none;
+	box-shadow:
+		0 0 0 2px var(--color-bg),
+		0 0 0 4px var(--color-accent);
 }
 
 /* ------------------------------------------------------------- the dive veil */
@@ -353,4 +481,109 @@ body {
 	opacity: 0;
 	pointer-events: none;
 	z-index: 20;
+}
+
+/* --------------------------------------------------------------------------
+   The static page's second screen: the Selected Works, below the horizon.
+   The corridor's thirty-one photographs as a plain grid (src/static.js fills
+   it from the same curation.json), every one a link to the portfolio, as in
+   the tunnel. Same paper, same three-voice scale, no motion at all.
+   -------------------------------------------------------------------------- */
+#static-gallery {
+	position: relative;
+	padding: clamp(3rem, 8vh, 6rem) var(--gutter) clamp(3rem, 8vh, 5rem);
+	font-family: var(--font-editorial);
+	background: var(--color-bg);
+	color: var(--color-fg);
+}
+
+.is-3d #static-gallery {
+	display: none;
+}
+
+.gallery__head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 0.75rem 2rem;
+	margin-bottom: clamp(1.5rem, 4vh, 3rem);
+}
+
+.gallery__title {
+	font-family: var(--font-display);
+	font-weight: 900;
+	font-size: clamp(2rem, 5.2vw, 4.5rem);
+	line-height: 0.95;
+	letter-spacing: -0.045em;
+}
+
+.gallery__all {
+	font-size: clamp(0.85rem, 1.02vw, 1.0625rem);
+	font-weight: 500;
+	color: var(--color-accent);
+	text-decoration: underline;
+	text-underline-offset: 0.14em;
+	text-decoration-thickness: 0.07em;
+}
+
+/* Columns, not a grid: the curation mixes portrait and landscape frames,
+   and a row grid leaves a hole under every landscape next to a portrait.
+   Column flow packs them, reads top to bottom, and needs no script. */
+.gallery__grid {
+	columns: 22rem;
+	column-gap: clamp(1rem, 2vw, 2rem);
+}
+
+.gallery__item {
+	display: block;
+	break-inside: avoid;
+	margin-bottom: clamp(1rem, 2.5vw, 2.5rem);
+	color: inherit;
+	text-decoration: none;
+}
+
+.gallery__item img {
+	display: block;
+	width: 100%;
+	height: auto;
+	background: #ecebe7;
+}
+
+.gallery__caption {
+	display: block;
+	margin-top: 0.5em;
+	font-size: 0.8125rem;
+	font-weight: 500;
+	color: var(--color-fg-muted);
+}
+
+.gallery__item:hover .gallery__caption,
+.gallery__item:focus-visible .gallery__caption {
+	color: var(--color-fg);
+}
+
+.gallery__nav {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem 2rem;
+	margin-top: clamp(3rem, 8vh, 6rem);
+	padding-top: 1.25rem;
+	border-top: 1px solid #d8d6d0;
+	font-family: var(--font-display);
+	font-weight: 700;
+	font-size: 11px;
+	letter-spacing: 0.02em;
+	text-transform: uppercase;
+}
+
+.gallery__nav a {
+	color: var(--color-fg);
+	text-decoration: none;
+}
+
+.gallery__nav a:hover,
+.gallery__nav a:focus-visible {
+	text-decoration: underline;
+	text-underline-offset: 0.18em;
 }

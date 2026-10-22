@@ -50,7 +50,7 @@ const args = Object.fromEntries(
 const URL = args.url ?? "http://localhost:5180/";
 const WIDTH = Number(args.width ?? 1600);
 const HEIGHT = Number(args.height ?? 1000);
-const OUT = path.join(ROOT, args.out ?? "tools/shots");
+const OUT = path.resolve(ROOT, args.out ?? "tools/shots");
 
 // Rest, the first flinch out of flatness, the two poses that matter (steps
 // square on at 0.125, the back at 0.625) and two points in between.

@@ -42,7 +42,8 @@ npm run build
 | `npm run shoot:v2` | pareil sur `v2.html`, avec le coin creux **vérifié** en plus |
 | `npm run measure` | remesure la boîte encrée du glyph et la compare au SVG |
 | `npm run bake` | recalcule ce que chaque face du solide voit de la pièce (~30 s) |
-| `npm run curation` | rapatrie les 31 photos de la curation amatencio-photo dans `public/curation/` et écrit `public/curation.json`. Idempotent ; `-- --force` retélécharge tout |
+| `npm run curation` | rapatrie les photos de la **funnel curation** d'amatencio-photo (Studio → Photos → Funnel curation) dans `public/curation/` et écrit `public/curation.json`. Idempotent ; `-- --force` retélécharge tout. **Rarement utile à la main** : `npm run dev` le relance à chaque chargement de page et `npm run build` avant chaque build (plugin `curation` de `vite.config.js`) |
+| `npm run static` | **le contrôle de la page statique** : LibreWolf headless (WebGL coupé, profil jetable) sur `v2.html`, vérifie que la page sans scène est entière — voir « La page statique ». `npm run static:v1` pour `index.html` ; `-- --width 430 --height 930` pour un téléphone |
 
 `npm run dev` sert les deux pages : `/` et `/v2.html`.
 `npm run shoot` accepte `--width 430 --height 930 --out tools/shots/narrow`.
@@ -695,6 +696,68 @@ résidentes au repos, `born` à 0 partout. Ce que ça coûte : une frame de
 avait déjà une de 53 ms avant). Contrôle du repos : `PASS`, identique à
 l'octet ; console propre ; frames de galerie et de porte inchangées.
 
+### La page statique : ce qu'un navigateur sans WebGL voit (2026-09-11)
+
+Alexandre navigue aussi dans LibreWolf « en mode parano » : WebGL est coupé
+d'origine dans ce navigateur (comme dans Tor Browser, dans un Firefox durci,
+dans un Chrome d'entreprise verrouillé ou sur un GPU en liste noire). Constaté
+en headless sur un profil vierge : `new WebGLRenderer` lève « Error creating
+WebGL context », `three.run()` avorte dans le `DOMContentLoaded`, et **tout ce
+qui suit ne s'exécute jamais** — pas de logo (il n'existait qu'en 3D), pas de
+souris, un menu à opacité zéro, et le texte sous un `#page-host` en
+`pointer-events: none` : ni sélectionnable, ni son lien LENIA cliquable. La
+page semblait chargée, elle était morte.
+
+**La règle est inversée : la page statique est le défaut, la scène est
+l'amélioration.** La feuille de style décrit d'abord un document ordinaire —
+le héros dans le flux, le glyph en `<img>` SVG, les Selected Works en grille
+sous la ligne d'horizon — et chaque règle dont la scène a besoin (hôte fixe
+sous le canvas, spacer de scroll, menu collé aux contremarches) est scopée
+sous `html.is-3d`. C'est un **script inline classique dans le `<head>`** qui
+pose cette classe, avant le premier paint, si et seulement si un contexte
+WebGL peut être créé (le contexte de sonde est relâché aussitôt) : un
+navigateur sans WebGL, sans script, ou trop vieux pour charger le module
+tombe sur la page statique sans qu'aucun code ne tourne. `utils/bootScene.js`
+est la seconde porte : si le renderer lève quand même (contexte refusé après
+la sonde), le canvas est retiré et la classe rendue.
+
+Ce que la page statique garde du site animé, et comment :
+
+| Élément animé | Version statique |
+|---|---|
+| le solide au repos | `#static-glyph`, le SVG lui-même (99,1 % d'IoU avec l'encre du solide), centré à 72 % / 47 % du cadre et haut de 52 % — les nombres de `LAYOUT.wide`, NDC (0,44 ; 0,06) ; `LAYOUT.narrow` en dessous de 900 px. Frère de `#page`, pas enfant : `#page` est la texture, et un `foreignObject` ne charge pas d'image par URL. `z-index: 1`, sinon le papier de `#page` le recouvre |
+| le texte projeté | le DOM tel quel, `#page-host` en `position: relative` et `100svh`, pointeur rendu : sélectionnable, lien cliquable |
+| la souris de scroll | la même icône lucide, montrée tout de suite (pas de scène à attendre), retirée au premier scroll. Créée par `static.js` sur `index.html`, qui n'en avait pas |
+| le couloir des Selected Works | `#static-gallery`, « Photo portfolio » : les 31 photos lues dans **le même `curation.json`** que le couloir, en colonnes CSS (une grille à lignes laissait un trou sous chaque paysage voisin d'un portrait), chacune un lien vers le portfolio — la règle du tunnel |
+| le menu des marches | les deux destinations réelles en pied de section (Agency, Photography) ; Design n'a toujours pas de cible |
+
+Le `src/static.js` est tout ce qui a encore besoin de JavaScript côté
+statique : remplir la souris et la grille. Sans script, il reste le héros, le
+logo, le titre de la section, le lien vers le portfolio et le pied de page —
+c'est le markup qui les porte.
+
+**Deux contrôles, parce que deux navigateurs.** `npm run shoot` reste le juge
+de la scène : le repos est toujours **identique à l'octet** sur `/` et sur
+`/v2.html` après ce changement (rien sous `#page` n'est scopé — dans le
+`foreignObject` il n'y a pas de `<html>` pour porter une classe). Et
+`tools/static-shoot.mjs` (`npm run static`) pilote **LibreWolf** par le driver
+Firefox de puppeteer, sur un profil jetable donc avec ses réglages d'origine,
+et vérifie quinze choses : pas de WebGL (sinon le contrôle ne prouve rien),
+pas de canvas, héros dans le flux, glyph au pixel de la pose de repos (mesuré
+sur le viewport de mise en page, pas la fenêtre — Firefox headless dessine une
+barre de défilement classique de 15 px), lien sous le pointeur, texte
+sélectionnable, souris levée puis retirée, 31 items dans la grille, menu
+caché, console propre. `PASS` sur `v2.html`, `index.html` et en 430 × 930.
+Comparé au repos Chrome à la même taille : même hauteur d'encre (190 → 655 px),
+même position à la barre de défilement près.
+
+**Ce qui n'est pas fait, et pourquoi.** Le portable réel d'Alexandre a montré
+le lien LENIA **en noir**, ce que le profil vierge ne reproduit pas (cobalt,
+souligné) : c'est un réglage de son profil ou d'une extension, pas la page ;
+à revérifier chez lui après ce changement. `prefers-reduced-motion` ne bascule
+pas en statique — il court-circuite déjà les plongées, et personne ne l'a
+demandé.
+
 ### Les fichiers
 
 ```
@@ -711,12 +774,15 @@ src/
   utils/studioEnvironment.js le studio (plafond, pas de sol) construit à la main
   utils/utils.js             le modèle d'orbite + les ancres du menu
   utils/pageLinks.js         la doublure cliquable des liens de la page
+  utils/bootScene.js         démarre la scène, ou dit qu'elle ne peut pas
+  static.js                  la page sans WebGL : souris + grille des photos
   main.js / main-v2.js       les deux points d'entrée : la règle d'encrage, un mot
 tools/
   shoot.mjs                  frames déterministes + contrôle du repos
   flow.mjs                   la jauge de flux optique (voyage + plateau),
                              et --accel pour son accélération
   curation.mjs               bake des photos de la curation dans public/
+  static-shoot.mjs           le contrôle de la page statique, en LibreWolf
   measure-glyph-ink.py       la mesure qui fixe GLYPH_INK
   bake-glyph-light.py        ce que chaque face voit de la pièce → .light.json
 ```
@@ -1131,7 +1197,8 @@ lampes vivent dans le ciel, le bake dit combien de ciel chaque vertex voit,
   le brand book — proposé, pas pris : ce fichier ne s'édite pas sans arbitrage.
 - **Design n'a pas de destination.** Le label est sur sa contremarche, la
   plongée existe, le clic n'est pas branché. À décider : cette page elle-même,
-  une page dédiée, ou rien.
+  une page dédiée, ou rien. (Le pied de la page statique n'affiche donc que
+  Agency et Photography.)
 - **Le domaine n'est pas choisi, donc pas de `canonical` ni d'`og:image`
   absolue.** Les deux exigent une URL absolue ; une fausse ferait plus de mal
   qu'une absente. À faire le jour du domaine : `<link rel="canonical">` sur la

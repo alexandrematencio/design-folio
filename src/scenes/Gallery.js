@@ -3,6 +3,7 @@ import { clamp, lerp, smoothstep } from "../utils/utils";
 import { JOURNEY, journeyH, progressPastExit, rideRate } from "./Scene";
 import { ArrowUp } from "lucide";
 import { iconDataUrl } from "../utils/icon";
+import curation from "virtual:curation";
 
 /**
  * THE GALLERY — the Selected Works, hung in the corridor BEYOND the hole.
@@ -73,14 +74,23 @@ const GRID = {
 	/** Cells across a wall. The cell is square: it is this deep as well. */
 	CELLS: 4,
 	/**
-	 * Photographs, two per row. 16 rows is the curation — 31 baked images, see
-	 * tools/curation.mjs. It is a constant rather than a count read off the
-	 * JSON because the LENGTH of the tunnel, and with it the pacing of the
-	 * 625vh plateau, must not depend on when a fetch happens to land.
+	 * Photographs, two per row: one row per pair of the funnel curation, baked
+	 * by tools/curation.mjs. Read off the BUNDLED manifest (virtual:curation,
+	 * vite.config.js), never off a fetch: the LENGTH of the tunnel, and with it
+	 * GALLERY.VH and the spacer, must be known before the first frame, not when
+	 * a request happens to land. An empty manifest falls back on the 16 rows
+	 * the corridor was designed at, so the plateau keeps its pace.
 	 */
-	ROWS: 16,
-	/** Cells between two rows. 4 = one bore width: a square rhythm. */
-	PITCH: 4,
+	ROWS: Math.ceil(curation.length / 2) || 16,
+	/**
+	 * Cells between two rows. 2 = half a bore width: rows alternate between
+	 * the floor/-x pair and the ceiling/+x pair, so every wall still gets a
+	 * photograph every 4 cells — one frame, one frame's depth of lattice —
+	 * and the photographs cover twice the wall they did at 4 (a square rhythm
+	 * that left seven eighths of the corridor bare). Halving it also halves
+	 * the run, and GALLERY.VH with it: the pace at the door does not change.
+	 */
+	PITCH: 2,
 	/** Cells from the seam pose to the first row, and past the last one. */
 	LEAD: 6,
 	/**
@@ -93,14 +103,16 @@ const GRID = {
 	MARGIN: 0.1,
 	/**
 	 * THE EXIT ARROW, printed on the floor after the last row: cells past the
-	 * last row's centre to the arrow's centre. The floor is free there (the
-	 * last row hangs on the ceiling and the +x wall), so it reads on its own,
-	 * pointing down the axis at the door out. Two cells is the end of the
-	 * trip itself: the arrow lies under the eye when the ride stops, and is
-	 * seen from a bore width and a half back — where the last pictures are
-	 * still passing, which is exactly when "there is an out" is worth saying.
+	 * last row's centre to the arrow's centre, pointing down the axis at the
+	 * door out. It was 2 — the end of the trip itself — and the arrow then
+	 * lay against the last photograph whenever the last row hung on the floor
+	 * (an odd curation ends on one floor picture). 8 is four times that: the
+	 * arrow now stands on the corridor BEYOND the ride's stop (AHEAD keeps
+	 * eight bore widths of it), a bore width and a half ahead of the eye when
+	 * the ride ends, inside the clear band of the fog. LENGTH does not read
+	 * it, so moving it neither lengthens the trip nor changes its pace.
 	 */
-	ARROW_AT: 2,
+	ARROW_AT: 8,
 	/** Pixels the arrow is rasterised at; it is seen at a grazing angle. */
 	ARROW_PX: 256,
 	/** Bore widths of tunnel kept beyond the far seam, so the fog closes it. */
@@ -146,11 +158,20 @@ const LENGTH = (GRID.LEAD + (GRID.ROWS - 1) * GRID.PITCH + GRID.TAIL) * CELL;
  * the flow gauge. It used to be 750, and the corridor then started 26 % slow
  * and spent a tenth of the trip catching up; then 625 for the 18-width run
  * before the tail was cut.
+ *
+ * THE RUN IS NO LONGER A FIXED LENGTH: it has one row per pair of photographs
+ * (GRID.ROWS), so VH is computed from LENGTH instead of written down — 592 at
+ * 16 rows, and proportionally more for a longer curation, the corridor holding
+ * the conduit's speed whatever its length. core/Three.js writes LOOP_VH + VH on
+ * v2.html's spacer at start-up.
  */
+const PLATEAU = progressPastExit(JOURNEY.DOOR_OVER);
 export const GALLERY = {
 	LOOP_VH: 1200, // what v2.html's spacer was before the plateau
-	VH: 592, // what the plateau adds to it — solved, see above
-	PLATEAU: progressPastExit(JOURNEY.DOOR_OVER),
+	// What the plateau adds to it — solved, see above. Rounded to the vh: the
+	// corridor then runs within 0.1 % of the conduit's speed.
+	VH: Math.round((1200 * LENGTH) / rideRate(PLATEAU)),
+	PLATEAU,
 };
 
 /**
@@ -270,7 +291,7 @@ export default class Gallery {
 		this.live = false;
 		this.clearColour = new THREE.Color(PAPER);
 
-		/** curation.json, in curation order. Empty until the fetch lands. */
+		/** The funnel curation, in its order (virtual:curation). */
 		this.photos = [];
 		/** slug -> THREE.Texture, kept across rebuilds: a resize is not a reload. */
 		this.textures = new Map();
@@ -830,22 +851,16 @@ export default class Gallery {
 	/* ------------------------------------------------------------ the photos */
 
 	/**
-	 * The index is not a texture: three kilobytes of JSON, same origin, baked
-	 * at build time by tools/curation.mjs. Failing to read it leaves an empty
-	 * tunnel — a page that still works, which is the whole reason the images
-	 * are baked rather than pulled off Sanity's CDN at runtime.
+	 * The index is not a texture: a few kilobytes of JSON baked by
+	 * tools/curation.mjs and BUNDLED (virtual:curation) — GRID.ROWS is read off
+	 * it at import time, so a fetch would land too late. An empty index leaves
+	 * an empty tunnel: a page that still works, which is the whole reason the
+	 * images are baked rather than pulled off Sanity's CDN at runtime.
 	 */
-	async #loadIndex() {
-		try {
-			const response = await fetch("/curation.json");
-			if (!response.ok) return;
-			const data = await response.json();
-			if (!Array.isArray(data.photos) || data.photos.length === 0) return;
-			this.photos = data.photos;
-			this.dirty = true;
-		} catch {
-			/* an empty tunnel, and no noise in the console the shoot reads */
-		}
+	#loadIndex() {
+		if (curation.length === 0) return;
+		this.photos = curation;
+		this.dirty = true;
 	}
 
 	/** Start pulling the textures. Called on idle, and by the loop past 0.3. */

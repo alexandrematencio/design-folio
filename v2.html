@@ -11,6 +11,29 @@
 			import would apply a beat later in dev and flash the raw copy.
 		-->
 		<link rel="stylesheet" href="/src/style.css" />
+		<!--
+			Static or scene, decided BEFORE the first paint. Without WebGL
+			(LibreWolf, Tor, a hardened Firefox, a blocklisted GPU) the page
+			stays the stylesheet's default: the static layout, hero in flow,
+			glyph as an <img>, the Selected Works as a grid below the fold
+			(src/static.js). With it, `is-3d` on <html> hands the layout to the
+			scene. Classic script, inline, on purpose: it has to run in
+			browsers that will never load the module. The probe context is
+			released at once; three makes its own.
+		-->
+		<script>
+			(function () {
+				var ok = false;
+				try {
+					var canvas = document.createElement("canvas");
+					var gl = canvas.getContext("webgl2") || canvas.getContext("webgl");
+					ok = !!gl;
+					var lose = gl && gl.getExtension("WEBGL_lose_context");
+					if (lose) lose.loseContext();
+				} catch (e) {}
+				if (ok) document.documentElement.classList.add("is-3d");
+			})();
+		</script>
 
 		<title>Hi, I'm Alex — Alex Matencio, designer &amp; photographer</title>
 		<meta name="description" content="Alex Matencio — designer, photographer and synesthete. Visual work that pleases the client and convinces their customers; the rest goes to cognitive science, crowd dynamics and live experiments." />
@@ -52,7 +75,7 @@
 				],
 				"sameAs": [
 					"https://www.aaxlo.com",
-					"https://alexandrematencio.github.io/photo-portfolio",
+					"https://photo.amatencio.com/",
 					"https://github.com/alexandrematencio"
 				]
 			}
@@ -77,8 +100,9 @@
 			corridor was then a fifth slower than the road it continues; then
 			625 while the corridor still had a six-cell tail.
 
-			The two numbers live together in GALLERY — change one here and the
-			map breaks.
+			The inline 1792 is the 16-row value, what the page holds before its
+			script runs: core/Three.js rewrites it from GALLERY at start-up, the
+			corridor having one row per pair of photographs of the funnel curation.
 		-->
 		<div id="scroll-spacer" style="height: 1792vh" aria-hidden="true"></div>
 
@@ -102,7 +126,7 @@
 			</a>
 			<a
 				class="step-menu__item"
-				href="https://alexandrematencio.github.io/photo-portfolio"
+				href="https://photo.amatencio.com/"
 				data-step="1"
 				data-dest="photography"
 			>
@@ -152,37 +176,76 @@
 			aria-hidden here: the canvas carries it instead.
 		-->
 		<div id="page-host">
+			<!--
+				The static page's logo: the SVG, at the rest pose's exact spot
+				(style.css, #static-glyph). Hidden under `is-3d`, where the
+				solid draws it. Outside #page: that element is the texture.
+			-->
+			<img
+				id="static-glyph"
+				src="/glyph-alxmtnc.svg"
+				width="559"
+				height="521"
+				alt=""
+				aria-hidden="true"
+			/>
 			<article id="page">
 				<div class="page__inner">
 					<h1 class="display">Hi,&nbsp;I&rsquo;m&nbsp;Alex.</h1>
 
 					<div class="copy">
 						<p class="lead">
-							A creative mind with several forms of high-functioning
-							synesthesia, obsessed with how the brain builds a mind, how minds
-							interact with one another and about dynamics of groups of minds
-							— and talking about that to other people.
+							Professionally, I am a digital and print designer, photographer
+							and art director, with a Bachelor&rsquo;s in Project Management
+							(ECV Digital, Paris, 2018). I run the AAXLO agency.
 						</p>
 
 						<p>
-							I design visual work that has to please the client and convince
-							their customers: appealing, functional, fool-proof. The rest of my
-							attention goes to neuro-cognitive and cognitive sciences in
-							general, evolutionary psychology, anthropology, and crowd
-							dynamics from 2 people to billions.
+							Outside of work I mostly try to understand how minds work, alone
+							and in crowds. Several forms of synesthesia make me see ideas as
+							structures, and I have spent twenty years learning to put those
+							into words, with mixed results. What I worked out alone about
+							consciousness and group dynamics sits closer to the research than
+							I expected. Psychologists I know keep telling me to write it
+							down. I am trying.
 						</p>
 
 						<p>
-							Photography is one of my passions, good design and
-							entrepreneurship are two others. Experiments are the habit — like
-							my <a href="/lenia.html">LENIA</a> pet, running live within this
-							website.
+							The same curiosity goes where it wants. Six years of daily
+							economics and five on the markets, crypto included, gave me a
+							decent feel for reading a market by the mood of its crowd. I can
+							talk high finance, geopolitics, French politics, physics or
+							evolutionary science for hours, though my ADHD picks the
+							hyperfocus, not me. If your problem has people in it, I am happy
+							to think it through with you.
 						</p>
 					</div>
 				</div>
 
 			</article>
 		</div>
+
+
+		<!--
+			The static page's second screen, below the horizon. Hidden under
+			`is-3d`, where the corridor plays this role. The grid is filled by
+			src/static.js from curation.json — the same file the corridor
+			hangs its photographs from; the link to the whole portfolio and
+			the footer are in the markup so they exist without a script.
+		-->
+		<section id="static-gallery" aria-labelledby="static-gallery-title">
+			<header class="gallery__head">
+				<h2 id="static-gallery-title" class="gallery__title">Photo portfolio</h2>
+				<a class="gallery__all" href="https://photo.amatencio.com/">
+					See the whole portfolio
+				</a>
+			</header>
+			<div class="gallery__grid"></div>
+			<nav class="gallery__nav" aria-label="Sections">
+				<a href="https://www.aaxlo.com">Agency</a>
+				<a href="https://photo.amatencio.com/">Photography</a>
+			</nav>
+		</section>
 
 		<script type="module" src="/src/main-v2.js"></script>
 	</body>

@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en" data-layout="centred">
+	<head>
+		<meta charset="UTF-8" />
+		<link rel="icon" type="image/svg+xml" href="/glyph-alxmtnc.svg" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<!--
+			The stylesheet is linked from the head, not imported by the entry
+			module: the DOM page is on screen from the first paint (see
+			#page-host in style.css), so it has to be styled by then. A module
+			import would apply a beat later in dev and flash the raw copy.
+		-->
+		<link rel="stylesheet" href="/src/style.css" />
+		<!--
+			Static or scene, decided BEFORE the first paint. Without WebGL
+			(LibreWolf, Tor, a hardened Firefox, a blocklisted GPU) the page
+			stays the stylesheet's default: the static layout, hero in flow,
+			glyph as an <img>, the Selected Works as a grid below the fold
+			(src/static.js). With it, `is-3d` on <html> hands the layout to the
+			scene. Classic script, inline, on purpose: it has to run in
+			browsers that will never load the module. The probe context is
+			released at once; three makes its own.
+		-->
+		<script>
+			(function () {
+				var ok = false;
+				try {
+					var canvas = document.createElement("canvas");
+					var gl = canvas.getContext("webgl2") || canvas.getContext("webgl");
+					ok = !!gl;
+					var lose = gl && gl.getExtension("WEBGL_lose_context");
+					if (lose) lose.loseContext();
+				} catch (e) {}
+				if (ok) document.documentElement.classList.add("is-3d");
+			})();
+		</script>
+
+		<!--
+			Title and description: __HUB_…__ are filled at build time from the
+			Studio (vite.config.js, hubSeo; tools/hub-seo.mjs). They live in
+			Studio → Pages → « amatencio.com — page d’accueil » → « Référencement
+			(Google) ». This page is THE DOOR of amatencio.com: Caddy serves it
+			at /, so every address below is absolute and says so.
+		-->
+		<title>__HUB_TITLE__</title>
+		<meta name="description" content="__HUB_DESCRIPTION__" />
+		<link rel="canonical" href="https://amatencio.com/" />
+
+		<!-- Sharing cards: the rest frame of this page at 1200×630 (og-hub.png). -->
+		<meta property="og:type" content="website" />
+		<meta property="og:url" content="https://amatencio.com/" />
+		<meta property="og:site_name" content="Alexandre Xavier Matencio" />
+		<meta property="og:title" content="__HUB_TITLE__" />
+		<meta property="og:description" content="__HUB_DESCRIPTION__" />
+		<meta property="og:image" content="https://amatencio.com/og-hub.png" />
+		<meta property="og:image:width" content="1200" />
+		<meta property="og:image:height" content="630" />
+		<meta name="twitter:card" content="summary_large_image" />
+		<meta name="twitter:title" content="__HUB_TITLE__" />
+		<meta name="twitter:description" content="__HUB_DESCRIPTION__" />
+		<meta name="twitter:image" content="https://amatencio.com/og-hub.png" />
+
+		<!--
+			Who the page is about, for search engines and AI answer engines.
+			The Person carries the SAME @id as on amatencio.com/about/ (built by
+			amatencio-photo, lib/seo/jsonld.ts): one person, declared from both
+			pages, never two that Google would have to reconcile.
+		-->
+		<script type="application/ld+json">
+			[
+				{
+					"@context": "https://schema.org",
+					"@type": "WebSite",
+					"@id": "https://amatencio.com/#website",
+					"name": "Alexandre Xavier Matencio",
+					"alternateName": ["Alexandre Matencio", "Alex Matencio", "ALXMTNC"],
+					"url": "https://amatencio.com/",
+					"inLanguage": "en-US",
+					"author": { "@id": "https://amatencio.com/about/#person" }
+				},
+				{
+					"@context": "https://schema.org",
+					"@type": "Person",
+					"@id": "https://amatencio.com/about/#person",
+					"name": "Alexandre Matencio",
+					"alternateName": ["Alexandre Xavier Matencio", "Alex Matencio", "A. Matencio"],
+					"jobTitle": "Art director, designer and photographer",
+					"url": "https://amatencio.com/",
+					"mainEntityOfPage": "https://amatencio.com/about/",
+					"address": { "@type": "PostalAddress", "addressLocality": "Villejuif", "addressCountry": "FR" },
+					"knowsAbout": ["Art direction", "Graphic design", "Web design", "Photography"],
+					"sameAs": [
+						"https://photo.amatencio.com/",
+						"https://blog.amatencio.com/",
+						"https://www.aaxlo.com/",
+						"https://www.instagram.com/alxmtc",
+						"https://www.instagram.com/alxmtnc",
+						"https://github.com/alexandrematencio"
+					]
+				}
+			]
+		</script>
+	</head>
+	<body>
+		<!-- The WebGL canvas is injected here by WebGLContext. -->
+		<div id="app"></div>
+
+		<!--
+			Gives Lenis a scrollable range. Nothing is ever painted in it.
+			v2 rides half again longer than v1 (1200vh vs the stylesheet's
+			800vh): the tunnel journey wants a chauffeur's pace, and the only
+			honest way to slow a scroll-driven film is more road.
+
+			1792 = 1200 + 592: the extra 592vh is the GALLERY PLATEAU, the
+			stretch where the orbit stands still and the Selected Works run
+			past inside the bore. It is not a taste value — it is the wheel the
+			corridor's 17 bore widths need to run at the SAME speed the conduit
+			crosses the door at (GALLERY in scenes/Gallery.js does the sum, and
+			warns in dev if the two ever drift apart). It was 750, and the
+			corridor was then a fifth slower than the road it continues; then
+			625 while the corridor still had a six-cell tail.
+
+			The inline 1792 is the 16-row value, what the page holds before its
+			script runs: core/Three.js rewrites it from GALLERY at start-up, the
+			corridor having one row per pair of photographs of the funnel curation.
+		-->
+		<div id="scroll-spacer" style="height: 1792vh" aria-hidden="true"></div>
+
+		<!--
+			The menu: Journal, Photography, Design CARVED into the three risers,
+			top to bottom (scenes/StepEngravings.js reads the names off this
+			<nav>), and AAXLO as a solid wordmark standing on the floor behind
+			the stair (scenes/AaxloMark.js). The names come up only as the orbit
+			reaches the square-on pose; the wordmark comes out from behind the
+			stair on the same move. These items are the
+			invisible hit targets main-v2.js fits over each engraving every
+			frame. The ones with a destination are real links, href and all:
+			crawlers follow them, middle-click opens them; the click itself is
+			intercepted to play the dive first (main-v2.js).
+		-->
+		<nav id="step-menu" aria-label="Sites">
+			<a
+				class="step-menu__item"
+				href="https://blog.amatencio.com/"
+				data-step="0"
+				data-dest="journal"
+			>
+				Journal
+			</a>
+			<a
+				class="step-menu__item"
+				href="https://photo.amatencio.com/"
+				data-step="1"
+				data-dest="photography"
+			>
+				Photography
+			</a>
+			<!-- No destination yet (design.amatencio.com): a button, not a
+			     link, so nothing crawls to a page that does not exist.
+			     data-note is carved small beside the name, cap-high
+			     (StepEngravings.js); the label says it to screen readers. -->
+			<button
+				class="step-menu__item"
+				data-step="2"
+				data-dest="design"
+				data-note="soon"
+				aria-label="Design, soon"
+			>
+				Design
+			</button>
+			<!-- data-step 3 is the AAXLO wordmark on the floor (AaxloMark.js). -->
+			<a
+				class="step-menu__item"
+				href="https://www.aaxlo.com/"
+				data-step="3"
+				data-dest="agency"
+			>
+				AAXLO
+			</a>
+		</nav>
+
+		<!--
+			The veil the dive lands on: painted the colour of the FIRST FRAME of
+			the destination's own splash, so arriving there is a match cut, not
+			a flash. main-v2.js sets its colour per destination and fades it in
+			over the end of the dive.
+		-->
+		<div id="dive-veil" aria-hidden="true"></div>
+
+		<!--
+			The scroll cue: the same fixed, bottom-centred, floating outline
+			icon amatencio-photo's hero shows under its splash (lucide, 26px,
+			1.5 stroke, ink) — drawn here as a mouse. It lives OUTSIDE the
+			projected page on purpose: the page is a still, and this has to
+			breathe. main-v2.js fills it and shows it only on a cold arrival at
+			the rest frame, until the first scroll. It replaced the
+			"Scroll — it isn't flat" caption that used to sit in the page.
+		-->
+		<div id="scroll-cue" aria-hidden="true"></div>
+
+
+		<!--
+			The clickable side of the page's links. The <a> under #page is ink
+			on the wall once projected; utils/pageLinks.js keeps a transparent
+			proxy anchor over each of its line boxes, wherever the scene puts
+			them this frame, armed only while the text is readable.
+		-->
+		<div id="page-links" aria-hidden="true"></div>
+		<!--
+			The live DOM source — this is what gets rasterized and projected,
+			AND the copy crawlers and screen readers read. It sits in the
+			viewport, under the canvas, at the exact place the projection
+			prints it (style.css, #page-host): at rest the canvas paints the
+			same pixels on top, so nothing shows twice, and the first paint is
+			the rest frame before WebGL has drawn a thing. Real text, no
+			aria-hidden here: the canvas carries it instead.
+		-->
+		<div id="page-host">
+			<!--
+				The static page's logo: the SVG, at the rest pose's exact spot
+				(style.css, #static-glyph). Hidden under `is-3d`, where the
+				solid draws it. Outside #page: that element is the texture.
+			-->
+			<img
+				id="static-glyph"
+				src="/glyph-alxmtnc.svg"
+				width="559"
+				height="521"
+				alt=""
+				aria-hidden="true"
+			/>
+			<article id="page" class="page--door">
+				<div class="page__inner">
+					<h1 class="display">
+						Hi,&nbsp;I&rsquo;m&nbsp;Alex.
+						<span class="full-name">Alexandre Xavier Matencio</span>
+					</h1>
+
+					<p class="scroll-word">(scroll)</p>
+				</div>
+
+			</article>
+		</div>
+
+
+		<!--
+			The static page's second screen, below the horizon. Hidden under
+			`is-3d`, where the corridor plays this role. The grid is filled by
+			src/static.js from curation.json — the same file the corridor
+			hangs its photographs from; the link to the whole portfolio and
+			the footer are in the markup so they exist without a script.
+		-->
+		<section id="static-gallery" aria-labelledby="static-gallery-title">
+			<header class="gallery__head">
+				<h2 id="static-gallery-title" class="gallery__title">Photo portfolio</h2>
+				<a class="gallery__all" href="https://photo.amatencio.com/">
+					See the whole portfolio
+				</a>
+			</header>
+			<div class="gallery__grid"></div>
+			<nav class="gallery__nav" aria-label="Sections">
+				<a href="https://blog.amatencio.com/">Journal</a>
+				<a href="https://photo.amatencio.com/">Photography</a>
+				<a href="https://www.aaxlo.com/">AAXLO</a>
+			</nav>
+		</section>
+
+		<script type="module" src="/src/main-v2.js"></script>
+	</body>
+</html>

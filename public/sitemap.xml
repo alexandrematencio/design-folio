@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+	amatencio.com: the door (v3.html, served at /) and THE About page, which is
+	built by amatencio-photo and served here by Caddy. Each subdomain announces
+	its own pages in its own sitemap (photo., blog.).
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+	<url>
+		<loc>https://amatencio.com/</loc>
+	</url>
+	<url>
+		<loc>https://amatencio.com/about/</loc>
+	</url>
+</urlset>

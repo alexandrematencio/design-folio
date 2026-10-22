@@ -18,6 +18,8 @@ import {
 	smootherstep,
 	TAU,
 } from "../utils/utils";
+import { AaxloMark } from "./AaxloMark";
+import { StepEngravings } from "./StepEngravings";
 
 /* --------------------------------------------------------------- constants */
 
@@ -213,6 +215,27 @@ const LAYOUT = {
 	narrow: { x: 0.18, y: 0.4, heightFraction: 0.3, depth: 0 },
 };
 
+/**
+ * v3: the copy is gone, only the title is left at the top of the page, so the
+ * glyph takes the middle of the frame. Same sizes as LAYOUT: only the place
+ * changes. At x = y = 0 the orbit's final recentring slide has nothing left
+ * to walk — the glyph is already where the travel wants it.
+ *
+ * `clearText`: on a short screen (a 13" laptop, a phone on its side) the ink
+ * at full size climbs into the title block — at 1200×630 it covered
+ * "(scroll)". The glyph then shrinks, still centred, until its top clears the
+ * text by TEXT_CLEARANCE (see #layout). It never grows past heightFraction.
+ */
+const LAYOUT_CENTRED = {
+	wide: { ...LAYOUT.wide, x: 0, y: 0, clearText: true },
+	narrow: { ...LAYOUT.narrow, x: 0, y: 0, clearText: true },
+};
+
+/** Pixels kept free between the bottom of the title block and the ink. */
+const TEXT_CLEARANCE = 24;
+
+const LAYOUTS = { default: LAYOUT, centred: LAYOUT_CENTRED };
+
 const NARROW_BREAKPOINT = 900;
 
 /**
@@ -254,6 +277,9 @@ const STEP_TREADS = [
 	[-0.5, 1.5, 0],
 	[0.5, 0.5, 0],
 	[1.5, -0.5, 0],
+	// The fourth item of the menu is the AAXLO wordmark standing on the
+	// floor behind the stair (AaxloMark.js): its dive lands on the word.
+	AaxloMark.CENTRE,
 ];
 
 /**
@@ -727,8 +753,10 @@ const BANK = {
 /* ------------------------------------------------------------------- scene */
 
 export default class Scene {
-	constructor({ shading = "two-tone", journey = false } = {}) {
+	constructor({ shading = "two-tone", journey = false, layout = "default" } = {}) {
 		this.shadingName = shading;
+		this.layouts = LAYOUTS[layout];
+		if (!this.layouts) throw new Error(`unknown layout: ${layout}`);
 		this.shading = SHADING[shading];
 		if (!this.shading) throw new Error(`unknown shading: ${shading}`);
 
@@ -783,11 +811,20 @@ export default class Scene {
 
 		// World point the camera turns about: the centre of the logo's ink.
 		this.pivot = new THREE.Vector3();
+		// Where the page's text ends (#measureText) — 0 until measured.
+		this.textBottom = 0;
 
 		// The dive, when one is running: { t: 0..1, step, direction, done }.
 		// Read by main-v2.js to drive the veil and the hand-off; direction is
 		// -1 when the visitor is coming back. Null otherwise.
 		this.dive = null;
+
+		// The menu carved into the stair (StepEngravings.js): the labels
+		// arrive from the page (setMenu) and the glyph from a load, in
+		// either order — whichever comes second builds them.
+		this.menuTexts = null;
+		this.engravings = null;
+		this.mark = null;
 
 		this.#init();
 	}
@@ -805,6 +842,7 @@ export default class Scene {
 		this.width = width;
 		this.height = height;
 		this.aspectRatio = width / height;
+		this.#measureText();
 	}
 
 	#setupScene() {
@@ -969,6 +1007,7 @@ export default class Scene {
 
 		this.scene.add(mesh);
 		this.glyph = mesh;
+		this.#buildEngravings();
 		this.#updateRig();
 	}
 
@@ -1002,7 +1041,14 @@ export default class Scene {
 	#addRoom() {
 		this.#disposeRoom();
 
-		const box = new THREE.Box3().setFromObject(this.glyph);
+		// The SOLID's box, not setFromObject(glyph): that one walks the
+		// children, and the menu rides on the glyph — the AAXLO mark alone
+		// stands two units past the stair and would have moved the room's
+		// centre and blown up its radius.
+		this.glyph.geometry.computeBoundingBox();
+		const box = this.glyph.geometry.boundingBox
+			.clone()
+			.applyMatrix4(this.glyph.matrixWorld);
 		const size = box.getSize(new THREE.Vector3());
 		const centre = box.getCenter(new THREE.Vector3());
 		const radius = size.x * ROOM.radius;
@@ -1082,7 +1128,29 @@ export default class Scene {
 
 	#layout() {
 		// <= so it flips on the same pixel as the stylesheet's max-width.
-		return this.width <= NARROW_BREAKPOINT ? LAYOUT.narrow : LAYOUT.wide;
+		const layout =
+			this.width <= NARROW_BREAKPOINT ? this.layouts.narrow : this.layouts.wide;
+		if (!layout.clearText || !this.textBottom) return layout;
+		// The ink is centred, so its top sits (1 - fraction) / 2 of the height
+		// down the frame: solve for the fraction that puts it under the text.
+		const fit = 1 - (2 * (this.textBottom + TEXT_CLEARANCE)) / this.height;
+		return { ...layout, heightFraction: Math.min(layout.heightFraction, fit) };
+	}
+
+	/**
+	 * Where the page's text ends, in pixels from the top of #page — what a
+	 * `clearText` layout keeps the glyph under. Measured on the live DOM,
+	 * which is laid out exactly as the raster will be.
+	 */
+	#measureText() {
+		const inner = document.querySelector("#page .page__inner");
+		const page = document.getElementById("page");
+		if (!inner || !page) return;
+		const top = page.getBoundingClientRect().top;
+		this.textBottom = Math.max(
+			0,
+			...[...inner.children].map((el) => el.getBoundingClientRect().bottom - top),
+		);
 	}
 
 	/**
@@ -1221,6 +1289,10 @@ export default class Scene {
 		this.renderCamera = this.camera;
 		if (this.journey) this.#applyJourney(progress);
 		this.#applyDive(delta);
+		// The carved menu comes up as the steps come square on, and only
+		// then: facing is 0 at rest, and the labels are switched off there.
+		this.engravings?.update(delta, facingSteps(progress));
+		this.mark?.update(delta);
 
 		/*
 		 * The page's opacity is decided LAST, off the camera every move above
@@ -1743,7 +1815,7 @@ export default class Scene {
 		const origin = document
 			.getElementById("page")
 			?.getBoundingClientRect();
-		const boxes = ["#page .display", "#page .copy"]
+		const boxes = ["#page .display", "#page .copy", "#page .scroll-word"]
 			.map((sel) => document.querySelector(sel)?.getBoundingClientRect())
 			.filter(Boolean);
 		if (!origin || !boxes.length) return;
@@ -1956,6 +2028,25 @@ export default class Scene {
 	stepAnchors() {
 		const facing = facingSteps(this.progress);
 		if (!this.glyph) return { facing, steps: [] };
+		// With the carved menu, the anchors are the labels themselves —
+		// centre AND extent, so the DOM hit targets cover the engraving.
+		if (this.engravings) {
+			const steps = this.engravings.anchors(this.camera, this.width, this.height);
+			// The mark is clickable whenever it can be seen (AaxloMark.anchors),
+			// so it is measured through the camera that actually draws —
+			// the tunnel's eye during the ride, not the orbit's.
+			if (this.mark) {
+				steps.push(
+					this.mark.anchors(
+						this.renderCamera ?? this.camera,
+						this.width,
+						this.height,
+						this.glyph,
+					),
+				);
+			}
+			return { facing, steps };
+		}
 
 		const v = new THREE.Vector3();
 		const steps = STEP_FRONTS.map(({ id, point }) => {
@@ -1975,6 +2066,31 @@ export default class Scene {
 		return { facing, steps };
 	}
 
+	/**
+	 * The menu's names, slot 0..2 the risers top to bottom, slot 3 the AAXLO
+	 * mark on the floor (its name is in the wordmark, not drawn from here).
+	 * Read off the page's own <nav> by main-v2.js, so the carving and the
+	 * crawlable links can never say two different things.
+	 *
+	 * @param {{text: string, note?: string}[]} items
+	 */
+	setMenu(items) {
+		this.menuTexts = items;
+		this.#buildEngravings();
+	}
+
+	/** The label under the pointer or the keyboard focus; null for none. */
+	setMenuHover(index) {
+		this.engravings?.setHover(index);
+		this.mark?.setHover(index === 3);
+	}
+
+	#buildEngravings() {
+		if (!this.glyph || !this.menuTexts || this.engravings) return;
+		this.engravings = new StepEngravings(this.glyph, this.menuTexts);
+		this.mark = new AaxloMark(this.glyph);
+	}
+
 	/** Where the two poses that matter sit on the scroll, for anyone wiring UI. */
 	static get MARKS() {
 		return { rest: 0, steps: ORBIT.STEPS, back: ORBIT.BACK };
@@ -1986,6 +2102,7 @@ export default class Scene {
 		this.width = width;
 		this.height = height;
 		this.aspectRatio = width / height;
+		this.#measureText();
 
 		const { halfW, halfH } = this.#frustum(this.aspectRatio);
 		for (const cam of [this.camera, this.restCamera]) {
