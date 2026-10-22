@@ -1,6 +1,7 @@
 {
-  "generatedAt": "2026-09-13T19:43:07.095Z",
+  "generatedAt": "2026-09-28T15:46:33.847Z",
   "source": "sanity:yh5i5diw/production funnelCuration.photos",
+  "transform": "?w=768&h=768&fit=max&fm=jpg&q=82",
   "photos": [
     {
       "slug": "godly-birds",
@@ -27,8 +28,8 @@
       "slug": "2023-biarritz-bay-watch",
       "title": "Biarritz Bay Watch",
       "src": "/curation/2023-biarritz-bay-watch.jpg",
-      "width": 3124,
-      "height": 4166
+      "width": 1536,
+      "height": 2048
     },
     {
       "slug": "2026-moscow-coffee-shop",
@@ -199,10 +200,10 @@
       "height": 1138
     },
     {
-      "slug": "2025-djerba-canvas-1",
-      "title": "Canvas [1]",
-      "src": "/curation/2025-djerba-canvas-1.jpg",
-      "width": 1536,
+      "slug": "arch-1",
+      "title": "Arch [1]",
+      "src": "/curation/arch-1.jpg",
+      "width": 2048,
       "height": 2048
     },
     {
@@ -269,9 +270,9 @@
       "height": 1202
     },
     {
-      "slug": "2026-villejuif-seats",
+      "slug": "seats",
       "title": "Seats",
-      "src": "/curation/2026-villejuif-seats.jpg",
+      "src": "/curation/seats.jpg",
       "width": 2048,
       "height": 2048
     },
@@ -283,9 +284,9 @@
       "height": 1365
     },
     {
-      "slug": "2026-villejuif-topo",
-      "title": "Topo",
-      "src": "/curation/2026-villejuif-topo.jpg",
+      "slug": "quiet-tri",
+      "title": "Quiet Tri",
+      "src": "/curation/quiet-tri.jpg",
       "width": 2048,
       "height": 1365
     },
