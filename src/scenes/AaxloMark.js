@@ -129,6 +129,8 @@ export class AaxloMark {
 
 		// The hit box, in the group's frame: what the DOM target is fitted to.
 		const halfW = ((box.max.x - box.min.x) / 2) * s;
+		/** The word's length, glyph units: what the AAXLO shot frames. */
+		this.width = 2 * halfW;
 		this.corners = [];
 		for (const x of [-halfW, halfW])
 			for (const y of [0, HEIGHT])
@@ -154,6 +156,14 @@ export class AaxloMark {
 	/** Centre of the word, glyph space — where its dive lands. */
 	static get CENTRE() {
 		return [MARK_CENTRE[0], MARK_CENTRE[1] + HEIGHT / 2, MARK_CENTRE[2]];
+	}
+
+	/**
+	 * The way the word's face looks, glyph space: the extrusion's +Z turned
+	 * by YAW. The AAXLO shot (Scene.js, STAGE) looks straight back along it.
+	 */
+	static get FACING() {
+		return [Math.sin(YAW), 0, Math.cos(YAW)];
 	}
 
 	update(delta) {

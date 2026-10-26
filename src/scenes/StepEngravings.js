@@ -43,7 +43,7 @@ const RISERS = [
 ];
 
 /** A label's footprint, in glyph units. The riser is 1 tall, 2.5 deep. */
-const LABEL = { width: 2.3, height: 0.62 };
+export const LABEL = { width: 2.3, height: 0.62 };
 /** Off the face, along its normal, in glyph units — and polygonOffset on top. */
 const LIFT = 0.004;
 
@@ -66,7 +66,10 @@ const HOVER_DEPTH = 0.78;
 /** Seconds to settle into or out of the hover — a micro-interaction (~150 ms). */
 const HOVER_SECONDS = 0.15;
 
-const FONT_FAMILY = '"Helvetica Neue", Helvetica, Arial, sans-serif';
+/** CSS pixels of a label that must be in frame for it to take a click. */
+const VISIBLE_PX = 16;
+
+const FONT_FAMILY ='"Helvetica Neue", Helvetica, Arial, sans-serif';
 
 /** The note's size, against the name's. */
 const NOTE_SCALE = 0.4;
@@ -278,8 +281,15 @@ export class StepEngravings {
 				y: c.y,
 				width: s.x,
 				height: s.y,
+				// Any of it in frame, not its centre: a name cut by the frame's
+				// edge is still a name you can see, and click (Alexandre,
+				// 2026-10-26: every name in view takes a click, not only the framed one).
 				onScreen:
-					!behind && c.x >= 0 && c.x <= width && c.y >= 0 && c.y <= height,
+					!behind &&
+					box.max.x > VISIBLE_PX &&
+					box.min.x < width - VISIBLE_PX &&
+					box.max.y > VISIBLE_PX &&
+					box.min.y < height - VISIBLE_PX,
 			};
 		});
 	}

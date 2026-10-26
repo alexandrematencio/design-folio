@@ -217,8 +217,9 @@ seconde différence — voir « L'amortissement » plus bas.
 Et parce que la seule façon honnête de ralentir un film piloté au scroll est
 d'allonger la route, **v2 roule sur 1200vh** de voyage (contre 800 pour v1),
 plus 592vh de plateau pour la galerie — 1792 en tout, inline dans v2.html.
-Le repos aimante toujours légèrement (`#maybeSnap`, v2 seulement), et tout
-reste une fonction pure du scroll : marche arrière gratuite.
+Le repos aimantait légèrement (`#maybeSnap`) ; depuis le 2026-10-26 c'est le
+scroll par étapes qui s'en charge (voir plus bas), et tout reste une fonction
+pure du scroll : marche arrière gratuite.
 
 ### Le banking : la caméra prend ses virages (v2)
 
@@ -758,11 +759,153 @@ souligné) : c'est un réglage de son profil ou d'une extension, pas la page ;
 pas en statique — il court-circuite déjà les plongées, et personne ne l'a
 demandé.
 
+### Le scroll par étapes (2026-10-26)
+
+Sur téléphone, le film était un marathon de pouce, et ce qu'il fait défiler
+(les trois noms, AAXLO) ne faisait que traverser le cadre : à 390 px de large,
+le mot AAXLO ne montrait jamais que ses premières lettres au bord droit. Deux
+changements, valables sur mobile **et** desktop pour le second.
+
+**Le cadrage mobile.** `ORBIT.ZOOM_TRAVEL` (1,75) avait été réglé sur un écran
+large. Sur la mise en page étroite (≤ 900 px), le zoom de voyage est désormais
+calculé : à la vue des marches, le solide et le mot doivent tenir dans 88 % du
+cadre (`Scene.#fitTravelZoom`). À 390 × 844 il tombe à 1,0, le plancher (en
+dessous, le cadre dépasse le cône du projecteur). Le desktop garde 1,75 à
+l'identique, et avec lui le rythme du tunnel qui y a été mesuré.
+
+**Un geste, un ancrage.** La moitié avant de la boucle n'est plus un scroll
+libre mais six ancrages (`STAGE` dans `Scene.js`) :
+
+| stage | cadre |
+|---|---|
+| 0 | le repos, la page exacte |
+| 1, 2, 3 | face aux marches, cadré sur JOURNAL, puis PHOTOGRAPHY, puis DESIGN |
+| 4 | face au mot AAXLO, à l'élévation du voyage |
+| 5 | devant la bouche du tunnel, sur son axe (fin de MORPH_IN, progress ≈ 0,497), la galerie visible au fond |
+
+Un coup de molette, un swipe ou une flèche du clavier : la caméra part seule
+vers l'ancrage suivant et s'y arrête (`core/StageNav.js`). Après la bouche, le
+scroll redevient libre dans le couloir. Passé la fin du couloir (t = 1 − VEIL,
+quand le papier commence à se dissoudre), la fermeture de la boucle se joue
+seule jusqu'au repos, en 6 s. Depuis le repos, un geste vers le haut la joue à
+l'envers et dépose au bout du couloir.
+
+Ce qui tient l'ensemble : **rien n'a changé de nature**. Un déplacement est un
+`lenis.scrollTo` animé entre deux positions de scroll, et l'image reste une
+fonction pure du scroll. Sur la moitié par étapes, la position de scroll porte
+le stage s (0..5) au lieu du progress, et `Three.#getLoopProgress` en tire le
+progress de la route (`stageProgress`) : l'orbite et l'ALIGN du tunnel jouent
+dessous comme avant (le menu monte, le solide s'allume, la bouche arrive).
+Par-dessus, un *shot* : le cadrage que l'ancrage demande (direction du regard,
+centre du cadre, hauteur du cadre). Les shots sont orthographiques comme la
+route partout où ils servent ; deux cadres se mélangent par ces trois valeurs,
+jamais en mélangeant des caméras. Le shot d'AAXLO lâche le mot pendant l'ALIGN
+et vaut zéro avant que la perspective n'entre.
+
+Les cadres sont **ajustés**, pas zoomés d'une constante : un nom remplit au
+plus 1/1,25 de la largeur, le mot AAXLO 1/1,6, et le cadre ne descend pas sous
+3,6 (noms) ou 2,4 (AAXLO) unités de glyphe de haut. Sur grand écran c'est la
+hauteur qui décide, sur un téléphone debout c'est la largeur.
+
+Ce qu'est un geste : un trackpad envoie de l'inertie pendant une seconde ou
+plus après le flick. Tout ce qui arrive sans 200 ms de silence est **un** geste,
+qui ne déplace la caméra qu'une fois, son inertie comprise. Une main qui
+**continue** (molette tournée sans pause, glisser lent à deux doigts, pouce qui
+avance encore) n'est pas de l'inertie : 450 ms après le dernier pas, si la
+molette tourne encore à 60 % du pic du geste ou si le doigt a fait 120 px de
+plus, le geste se réarme et refait un pas. L'inertie, elle, est déjà retombée
+sous ce seuil. Sans cette règle, une molette tournée en continu faisait un pas
+puis était avalée tant qu'elle tournait, et la page paraissait gelée. Mais un **nouveau**
+geste est toujours entendu, même en plein déplacement : dans le même sens il
+prolonge jusqu'à l'ancrage d'après, dans l'autre il fait demi-tour sur
+l'ancrage juste derrière (seule la fermeture ne se reprend pas). Sur trackpad,
+un nouveau flick lancé dans l'inertie du précédent n'a pas de silence pour le
+séparer : il se reconnaît à un delta qui remonte (au moins 24 px et 2,5 fois le
+précédent), là où l'inertie ne fait que décroître. Un touch est un geste depuis son touchstart (jamais `preventDefault` sur
+le touchstart : le tap des liens en dépend). Un geste qui a roulé dans le
+couloir ne fait pas en plus un pas : remonter le couloir d'un seul flick s'arrête
+à la bouche, pas sur AAXLO (en continuant de scroller, on enchaîne : voir
+plus bas). Si le scroll sort de la partie libre sans passer
+par la molette (inertie tactile, clavier, barre de défilement), le tick le
+rattrape : retour sur la bouche, ou fermeture. Laissé entre deux ancrages (un
+glisser de barre de défilement, un resize), il se pose sur le plus proche.
+
+Durées par trajet : 1,8 s (repos → JOURNAL, tout le reveal), 0,75 s entre deux
+noms, 1,4 s vers AAXLO, 2,2 s vers la bouche, et un quart de moins en marche
+arrière. Le premier réglage (2,2 / 1,1 / 1,7 / 2,6, easing in-out cubique)
+donnait l'impression que la page ne répondait pas : la cubique passe son
+premier cinquième de temps sur 3 % du trajet. L'easing est maintenant un
+*snap* : vitesse qui monte en 12 % du temps puis décroît au carré jusqu'à
+l'ancrage, un tiers du trajet fait en un cinquième du temps, toujours sans
+angle au départ ni à l'arrivée. Mesuré : la caméra a parcouru 5 % d'un trajet
+arrière ~40 ms après le cran de molette. Côté scène, le poids du shot sur le
+trajet repos → JOURNAL est `s²(2 − s)` au lieu d'un smootherstep, plat au repos
+mais pas à l'arrivée, sinon le départ du retour restait mou. La fermeture
+tourne à vitesse constante au milieu (le film porte déjà ses propres courbes)
+avec une entrée et une sortie adoucies sur un huitième du temps.
+
+**Les blocages (2026-10-26, second tour).** Trois causes trouvées en relisant
+`StageNav` contre le code de Lenis 1.3, toutes corrigées et couvertes par un
+banc headless de 38 cas (molette, trackpad simulé, tactile, clavier) :
+
+- *Mouvement fantôme.* `lenis.stop()` et un `scrollTo` immédiat arrêtent
+  l'animation sans jamais appeler son `onComplete`. Un clic sur un nom en plein
+  trajet (plongée) laissait donc `moving` à vrai pour toujours, et tous les
+  gestes suivants étaient avalés. Le drapeau est maintenant recalé à chaque
+  image sur `lenis.animate.isRunning`.
+- *Immobilité jamais constatée.* Lenis peut rester en `isScrolling = "native"`
+  indéfiniment (un évènement scroll natif juste après un reset, à vitesse
+  nulle, n'arme pas le minuteur qui le remet à zéro). Le recalage sur l'ancrage
+  le plus proche ne se déclenchait plus et la caméra restait entre deux noms.
+  L'immobilité est désormais mesurée : le scroll n'a pas bougé d'une image à
+  l'autre.
+- *Sortie du couloir.* Remonter le couloir pose la caméra sur la bouche, et le
+  geste qui l'y a amenée était consommé : on avait beau continuer, rien ne se
+  passait. Le recalage sur la bouche a maintenant une direction comme un trajet
+  (un geste pendant ce recalage l'enchaîne vers AAXLO), et la règle de la main
+  qui continue s'applique aussi. Un saut instantané depuis la bouche n'est plus
+  pris pour « le couloir s'est vidé ».
+
+Au passage : un pinch au trackpad (molette + `ctrlKey`) reste le zoom du
+navigateur et ne fait plus de pas ; un swipe latéral non plus ; les flèches
+tapées dans un champ appartiennent au champ. Une relance en plein trajet part
+à la vitesse courante au lieu de freiner jusqu'à zéro (`launch` : le terme
+v₀·t·(1 − t)⁶ ajoute la pente de départ sans rien changer à l'arrivée ; à la
+puissance 2 la courbe dépassait la cible de 11 %). La fermeture automatique,
+toujours d'une seule prise, repart en sens inverse si on scrolle à contre-sens
+pendant qu'elle joue.
+
+**Le parking serré.** Entre AAXLO et la bouche, l'ALIGN de la route finissait
+sur le cadre de voyage (5,7 unités de haut sur desktop, contre 2,9 sur le mot)
+et MORPH_IN refermait depuis là : la caméra reculait de moitié avant de
+revenir. Le cadre du parking vaut maintenant celui du mot, borné entre
+1,15 × le cadre à la bouche et le cadre de voyage (`Scene.#parkHeight`,
+`STAGE.PARK_OVER`) ; ALIGN zoome de l'orbite vers lui et le plan du stage 4→5
+va directement du mot au parking. Mesuré sur desktop : zoom 3,42 → 3,25 sur
+tout l'ALIGN, au lieu de 3,42 → 1,75 → 3,2. Sur téléphone, le cadre du mot est
+déjà large : il ne bouge plus du tout. Comme le cadre a peu à refermer, la
+pente d'arrivée de MORPH_IN est plafonnée à 2 (au-delà, la quintique
+dépasse) : on entre dans la bouche un peu sous la vitesse de croisière, sur
+l'ancrage même, là où la caméra s'arrête de toute façon. La jauge
+`tools/flow.mjs` ne montre aucun pic nouveau ; les 17 qui restent (porte,
+plateau) existaient avant (20 sur le code d'origine).
+
+Les noms gravés sont cliquables dès que 16 px de leur étiquette sont dans le
+cadre, et plus seulement quand leur centre l'est : un nom coupé par le bord du
+cadre reste un nom qu'on voit, donc qu'on clique. Sous `prefers-reduced-motion`, Lenis rend les `scrollTo`
+immédiats : chaque geste devient un cut vers l'ancrage suivant.
+
+Le retour d'une plongée (bouton Précédent) revient sur l'ancrage d'où elle est
+partie — l'item i du menu est le stage i + 1 (`three.stageOverride`, l'analogue
+de `progressOverride`). Au stage 4, cliquer AAXLO joue la plongée au lieu du
+fondu blanc : la caméra y est l'œil orthographique, face au mot.
+
 ### Les fichiers
 
 ```
 src/
   core/Three.js              boucle rAF, Lenis, resize débounce
+  core/StageNav.js           un geste, un ancrage : la moitié avant de la boucle
   core/WebGLContext.js       renderer, canvas, espace colorimétrique
   scenes/Scene.js            caméras, composition, éclairage, matériaux
   scenes/Gallery.js          le couloir des Selected Works : la porte, le plateau

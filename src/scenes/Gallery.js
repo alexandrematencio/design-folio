@@ -189,6 +189,13 @@ export const GALLERY = {
  */
 const OPEN = 1 / LENGTH;
 const VEIL = 0.75 / LENGTH;
+/**
+ * Where the free road ends (core/StageNav.js): the plateau's t at which the
+ * paper starts dissolving. Past it the close plays on its own — the U-turn and
+ * the climb back to the rest pose — instead of asking for five more screens of
+ * wheel over a corridor that has nothing left to show.
+ */
+GALLERY.EXIT = 1 - VEIL;
 /** Brand rule: a hover zoom never passes 1.04, and never comes with a caption. */
 const HOVER_SCALE = 1.03;
 /** Seconds a photograph takes to arrive once its texture is decoded. */
