@@ -1,5 +1,4 @@
 import Three from "./core/Three";
-import { ORBIT } from "./utils/utils";
 import { Mouse } from "lucide";
 import { iconSvg } from "./utils/icon";
 import { attachPageLinks } from "./utils/pageLinks";
@@ -196,7 +195,9 @@ document.addEventListener("DOMContentLoaded", () => {
 			returnToGallery(record.gallery);
 			return;
 		}
-		three.progressOverride = ORBIT.STEPS;
+		// The anchor the dive left from: step i of the menu is stage i + 1
+		// (scenes/Scene.js, STAGE) — the name framed, or the word face on.
+		three.stageOverride = record.step + 1;
 		three.lenis?.stop();
 		three.scene.rewindDive(record.step);
 	};
@@ -291,7 +292,11 @@ document.addEventListener("DOMContentLoaded", () => {
 			// tunnel leg another camera draws — so it whitens out the way a
 			// photograph does, into the agency's first frame. The record is
 			// the same as the dive's: the return lands on the menu.
-			if (three.scene.stepAnchors().facing <= CLICKABLE_FROM) {
+			// The word's own anchor is the one exception: there the camera
+			// is the orbit's ortho eye, face on to it, and the dive plays.
+			const atMark =
+				item.dataset.step === "3" && three.stage !== null && Math.abs(three.stage - 4) < 1e-3;
+			if (three.scene.stepAnchors().facing <= CLICKABLE_FROM && !atMark) {
 				veilOut(dest, item);
 				return;
 			}
@@ -412,7 +417,9 @@ document.addEventListener("DOMContentLoaded", () => {
 		// Rest is progress 0 exactly (the snap lands there); the loop's other
 		// end counts too, one frame before the wrap.
 		const driven =
-			three.progressOverride !== null || three.galleryOverride !== null;
+			three.progressOverride !== null ||
+			three.galleryOverride !== null ||
+			three.stageOverride !== null;
 		const p = three.scene.progress;
 		const atRest = p < 0.002 || p > 0.998;
 		if (driven || !atRest) cueSpent = true;
@@ -471,19 +478,18 @@ document.addEventListener("DOMContentLoaded", () => {
 			}
 
 			if (dive.done && dive.direction < 0) {
-				// Back at the step view. t is 0 here, where the dive is the
+				// Back at the anchor. t is 0 here, where the dive is the
 				// identity, so handing the camera back is a no-op on screen —
-				// and the scroll is placed at the position the orbit itself
-				// calls the step view, not at wherever the browser left it.
+				// and the scroll is placed on that anchor, not at wherever the
+				// browser left it.
+				const stage = three.stageOverride ?? Number(dive.step) + 1;
 				three.scene.endDive();
 				three.lenis?.start();
-				// scrollFor, not limit × progress: the spacer carries the
-				// gallery plateau, so the two stopped being the same number.
-				three.lenis?.scrollTo(three.scrollFor(ORBIT.STEPS), {
+				three.lenis?.scrollTo(three.scrollForStage(stage), {
 					immediate: true,
 					force: true,
 				});
-				three.progressOverride = null;
+				three.stageOverride = null;
 				veil.style.opacity = "0";
 				veil.removeAttribute("data-url");
 			}

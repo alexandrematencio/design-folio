@@ -19,7 +19,7 @@ import {
 	TAU,
 } from "../utils/utils";
 import { AaxloMark } from "./AaxloMark";
-import { StepEngravings } from "./StepEngravings";
+import { StepEngravings, LABEL } from "./StepEngravings";
 
 /* --------------------------------------------------------------- constants */
 
@@ -666,6 +666,8 @@ const sweepTurn = (u) => {
  * curve backs up; the ride asks for 1.36 on a wide viewport, 0.57 on a narrow
  * one, and its own peak slope (~1.49) is below smootherstep's 1.875.
  */
+/** The steepest arrival rampTo takes and stays monotone, with a margin. */
+const RAMP_SLOPE_MAX = 2;
 const rampTo = (u, m) =>
 	u * u * u * (((6 - 3 * m) * u - (15 - 7 * m)) * u + (10 - 4 * m));
 /** Compass angle of a direction. Increasing it turns the camera RIGHT. */
@@ -750,6 +752,85 @@ const BANK = {
 	EDGE_OUT: 0.15,
 };
 
+/**
+ * THE STAGES (v2) — the front half of the loop, played one gesture at a time.
+ *
+ * Alexandre, 2026-10-26: on a phone the film was a marathon of thumb, and the
+ * things it walks past (the names, AAXLO) only ever crossed the frame. So the
+ * scroll from the rest pose to the mouth of the bore is no longer free: it is
+ * six ANCHORS, and one gesture moves the camera from one to the next on its
+ * own (core/StageNav.js does the gestures). Past the mouth the scroll is free
+ * again, through the corridor; past the exit the close plays by itself.
+ *
+ *   0  rest            the page, exactly
+ *   1  JOURNAL         square on to the stair, framed on the top riser
+ *   2  PHOTOGRAPHY     the same eye, framed on the middle one
+ *   3  DESIGN          the bottom one
+ *   4  AAXLO           face on to the wordmark on the floor
+ *   5  the mouth       facing the hollow under the stair, the corridor
+ *                      already showing through it — the journey's own pose
+ *
+ * The stage s runs 0..COUNT and the frame is a pure function of it, like
+ * everything else here: the scroll carries s, so backwards is free and a
+ * gesture is nothing but an animated scrollTo between two anchors.
+ *
+ * TWO LAYERS. Under the frame there is still the ROAD — the orbit and the
+ * tunnel leg, read at stageProgress(s), which brings the menu up, lights the
+ * solid and hands over to the bore exactly as before. Over it, a SHOT: the
+ * framing an anchor asks for (which way the eye looks, what sits in the
+ * middle of the frame, how tall the frame is). The shots are ortho, like the
+ * road everywhere they are used, so a frame is three numbers and two frames
+ * blend by blending those — never by blending cameras.
+ *
+ * THE FRAMES ARE FITTED, not zoomed by a constant: a shot is tall enough for
+ * its subject to fill FILL of the frame's WIDTH, and never closer than FRAME.
+ * On a wide screen FRAME decides; on a phone held upright, the width does —
+ * that is the whole of the mobile framing.
+ */
+export const STAGE = {
+	COUNT: 5,
+	/** Where the road is held under the AAXLO shot: just short of the leg. */
+	AAXLO_AT: 0.19,
+	/**
+	 * The last anchor, in progress: the END of MORPH_IN, the eye on the
+	 * bore's axis right in front of the mouth, fully perspective, the
+	 * corridor lit at the far end. It used to sit earlier in MORPH_IN (0.46),
+	 * and the frame there was still half the way back to the wide park.
+	 */
+	MOUTH: JOURNEY.FROM + JOURNEY.MORPH_IN[1] * (JOURNEY.TO - JOURNEY.FROM),
+	/**
+	 * THE PARK IS TIGHT (Alexandre, 2026-10-26: from AAXLO to the bore the
+	 * camera "fait un grand bond en arrière"). ALIGN used to end on the
+	 * travel frame — 5.7 units tall on a desktop, against 2.9 on the word —
+	 * and MORPH_IN closed back in from there: out to twice as far, then in.
+	 * The park's frame is now the word's own, no closer than PARK_OVER times
+	 * the frame at the mouth, and never wider than the travel frame
+	 * (Scene.#parkHeight). On a phone the word's frame is width-fitted and
+	 * already wide: the park sits there and nothing backs off at all.
+	 */
+	PARK_OVER: 1.15,
+	/** Glyph units of frame height around a name, at the least. */
+	ITEM_FRAME: 3.6,
+	/** The frame is at least this many label widths across. */
+	ITEM_FILL: 1.25,
+	MARK_FRAME: 2.4,
+	MARK_FILL: 1.6,
+};
+
+/** The progress the road stands at, for a stage. */
+export const stageProgress = (s) => {
+	if (s <= 1) return ORBIT.STEPS * Math.max(0, s);
+	if (s <= 3) return ORBIT.STEPS;
+	if (s <= 4) return lerp(ORBIT.STEPS, STAGE.AAXLO_AT, s - 3);
+	return lerp(STAGE.AAXLO_AT, STAGE.MOUTH, Math.min(1, s - 4));
+};
+
+/** The tunnel leg's ALIGN ends here: the parked frame on the bore's axis. */
+const ALIGN_END = JOURNEY.FROM + JOURNEY.ALIGN[1] * (JOURNEY.TO - JOURNEY.FROM);
+
+/** Wraps an angle into (−π, π]: the short way round. */
+const shortest = (a) => ((((a + Math.PI) % TAU) + TAU) % TAU) - Math.PI;
+
 /* ------------------------------------------------------------------- scene */
 
 export default class Scene {
@@ -770,6 +851,9 @@ export default class Scene {
 			...this.shading.orbit,
 			travelReturn: journey ? TRAVEL_RETURN : null,
 		};
+		// The orthographic zoom while travelling: ORBIT.ZOOM_TRAVEL, unless
+		// the frame is too narrow for it (v2 only, see #fitTravelZoom).
+		this.zoomTravel = ORBIT.ZOOM_TRAVEL;
 		// World samples of the text block's footprint on the room, built once
 		// the projection exists. Null until then, and on v1 forever.
 		this.pageFootprint = null;
@@ -808,6 +892,8 @@ export default class Scene {
 		this.glyph = null;
 		this.cyclorama = null;
 		this.progress = 0;
+		// v2: the stage the frame was drawn at, null on the free road.
+		this.stage = null;
 
 		// World point the camera turns about: the centre of the logo's ink.
 		this.pivot = new THREE.Vector3();
@@ -1009,6 +1095,7 @@ export default class Scene {
 		this.glyph = mesh;
 		this.#buildEngravings();
 		this.#updateRig();
+		this.#fitTravelZoom();
 	}
 
 	#paperMaterial(side = THREE.FrontSide, colour = PAPER) {
@@ -1183,6 +1270,56 @@ export default class Scene {
 		this.key?.target.position.copy(this.pivot);
 	}
 
+	/**
+	 * THE MOBILE FRAMING. ZOOM_TRAVEL was set on a wide screen, where the
+	 * stair square on, with AAXLO beside it, sits comfortably inside 1.75.
+	 * On a phone held upright the frame is a third as wide for the same
+	 * height, and at 1.75 the stair filled it edge to edge while the word
+	 * only ever showed its first letters at the right edge. So the travel
+	 * zoom is FITTED: at the step view, the solid and the word must sit
+	 * inside FIT of the frame, both ways. It never goes past ZOOM_TRAVEL and
+	 * never under 1, where the frame would outgrow the projector's cone (see
+	 * ORBIT.ZOOM_TRAVEL). On the narrow layout only: a wide screen keeps the
+	 * framing — and the pacing of the tunnel, measured on it — exactly.
+	 *
+	 * v2 only: index.html is frozen, and its orbit keeps the constant.
+	 */
+	#fitTravelZoom() {
+		if (!this.journey || !this.glyph) return;
+		this.zoomTravel = ORBIT.ZOOM_TRAVEL;
+		this.orbitOptions.zoomTravel = this.zoomTravel;
+		if (this.width > NARROW_BREAKPOINT) return;
+		const FIT = 0.88;
+		this.#orbitCamera(ORBIT.STEPS, this.scratch);
+		this.scratch.updateMatrixWorld(true);
+		const toCamera = this.scratch.matrixWorld.clone().invert();
+
+		this.glyph.geometry.computeBoundingBox();
+		const box = this.glyph.geometry.boundingBox;
+		const points = [];
+		for (const x of [box.min.x, box.max.x])
+			for (const y of [box.min.y, box.max.y])
+				for (const z of [box.min.z, box.max.z])
+					points.push(new THREE.Vector3(x, y, z).applyMatrix4(this.glyph.matrixWorld));
+		if (this.mark) {
+			this.mark.group.updateMatrixWorld(true);
+			for (const c of this.mark.corners) {
+				points.push(c.clone().applyMatrix4(this.mark.group.matrixWorld));
+			}
+		}
+		let reachX = 0;
+		let reachY = 0;
+		for (const p of points) {
+			p.applyMatrix4(toCamera);
+			reachX = Math.max(reachX, Math.abs(p.x));
+			reachY = Math.max(reachY, Math.abs(p.y));
+		}
+		const { halfW, halfH } = this.#frustum(this.aspectRatio);
+		const fit = Math.min((FIT * halfW) / reachX, (FIT * halfH) / reachY);
+		this.zoomTravel = clamp(fit, 1, ORBIT.ZOOM_TRAVEL);
+		this.orbitOptions.zoomTravel = this.zoomTravel;
+	}
+
 	/* ----------------------------------------------------------- projection */
 
 	#setupProjection() {
@@ -1275,8 +1412,15 @@ export default class Scene {
 		return pose;
 	}
 
-	animate(delta, elapsed, progress = 0) {
+	/**
+	 * @param progress  where the road stands, 0..1 round the loop
+	 * @param stage     v2: the stage (see STAGE) when the scroll is in the
+	 *                  staged half of the loop, null on the free road. The
+	 *                  caller derives progress from it (stageProgress).
+	 */
+	animate(delta, elapsed, progress = 0, stage = null) {
 		this.progress = progress;
+		this.stage = stage;
 		const pose = this.#orbitCamera(progress, this.camera);
 		if (this.camera.zoom !== pose.zoom) {
 			this.camera.zoom = pose.zoom;
@@ -1288,6 +1432,9 @@ export default class Scene {
 
 		this.renderCamera = this.camera;
 		if (this.journey) this.#applyJourney(progress);
+		// The shot goes over the road and under the dive: a dive leaves from
+		// whatever the anchor framed.
+		if (stage !== null) this.#applyStage(stage, progress);
 		this.#applyDive(delta);
 		// The carved menu comes up as the steps come square on, and only
 		// then: facing is 0 at rest, and the labels are switched off there.
@@ -1304,6 +1451,142 @@ export default class Scene {
 		this.pageOpacity.value = this.journey
 			? this.#pageVisibility()
 			: pose.pageOpacity;
+	}
+
+	/* ----------------------------------------------------------- the stages */
+
+	/**
+	 * The shot over the road, for a stage (see STAGE). Leg by leg:
+	 *
+	 *   0 → 1  the road turns to the step view while the frame closes on
+	 *          JOURNAL; the shot's weight rises from nothing, so stage 0 is
+	 *          the rest pose untouched — no shot is even computed there
+	 *   1 → 3  the eye stays square on; the frame walks down the risers
+	 *   3 → 4  the frame swings round to face the word, the road meanwhile
+	 *          carrying the menu out of view (facingSteps on progress)
+	 *   4 → 5  the shot lets go of the word as the road's ALIGN brings the
+	 *          bore square on, and is gone by the end of ALIGN, before the
+	 *          perspective comes in: from there the road alone
+	 *
+	 * Only ever over the ortho camera — the shot is a framing of the
+	 * orthographic eye, and on this half of the loop that is the one drawing,
+	 * except in the last part of the last leg where its weight is zero.
+	 */
+	#applyStage(stage, progress) {
+		if (!this.glyph || this.renderCamera !== this.camera) return;
+		const s = clamp(stage, 0, STAGE.COUNT);
+		let from = null;
+		let to;
+		let w;
+		if (s < 1) {
+			// Flat at rest (the orbit leads the way out) but ARRIVING with
+			// the leg's own slope: a weight flat at 1 too froze the frame for
+			// the first third of the way back from JOURNAL — read as "the
+			// scroll did not answer".
+			to = this.#itemShot(0);
+			w = s * s * (2 - s);
+		} else if (s < 3) {
+			const i = Math.floor(s);
+			from = this.#itemShot(i - 1);
+			to = this.#itemShot(i);
+			w = s - i;
+		} else if (s < 4) {
+			from = this.#itemShot(2);
+			to = this.#markShot();
+			w = s - 3;
+		} else {
+			// The frame goes from the word's straight to the park's, which
+			// ALIGN ends on: through the road's own height it opened out to
+			// the travel frame and back, a breath in the middle of the move.
+			from = { ...this.#shotOf(this.camera), height: this.#parkHeight(this.glyph.scale.x) };
+			to = this.#markShot();
+			w = 1 - smootherstep(clamp((progress - STAGE.AAXLO_AT) / (ALIGN_END - STAGE.AAXLO_AT)));
+		}
+		if (w <= 0 && !from) return;
+		this.#putShot(this.camera, this.#mixShot(from ?? this.#shotOf(this.camera), to, w));
+	}
+
+	/**
+	 * A framing of the ortho eye: the gaze, the point in the middle of the
+	 * frame, and the frame's height in world units. Read off a camera: the
+	 * centre is taken on the gaze line at the pivot's depth.
+	 */
+	#shotOf(camera) {
+		const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+		const centre = camera.position
+			.clone()
+			.addScaledVector(dir, this.pivot.clone().sub(camera.position).dot(dir));
+		return { dir, centre, height: VIEW_HEIGHT / camera.zoom };
+	}
+
+	/**
+	 * Gaze by its two angles (the short way round), centre on a straight
+	 * line, frame height geometrically — a zoom that reads as even speed.
+	 */
+	#mixShot(a, b, w) {
+		const az = azimuth(a.dir) + shortest(azimuth(b.dir) - azimuth(a.dir)) * w;
+		const el = lerp(elevation(a.dir), elevation(b.dir), w);
+		return {
+			dir: heading(az, el),
+			centre: a.centre.clone().lerp(b.centre, w),
+			height: a.height * (b.height / a.height) ** w,
+		};
+	}
+
+	/**
+	 * Writes a shot onto an ortho camera. The eye stands as far from the
+	 * centre as the rest camera does from the pivot — outside the room, which
+	 * an orthographic eye has to be (see #addRoom) — with the world's up: the
+	 * orbit has no roll, and neither does any shot.
+	 */
+	#putShot(camera, { dir, centre, height }) {
+		const reach = this.restCamera.position.distanceTo(this.pivot);
+		camera.position.copy(centre).addScaledVector(dir, -reach);
+		camera.quaternion.setFromRotationMatrix(
+			new THREE.Matrix4().lookAt(camera.position, centre, WORLD_UP),
+		);
+		camera.zoom = VIEW_HEIGHT / height;
+		camera.updateProjectionMatrix();
+		camera.updateMatrixWorld(true);
+	}
+
+	/** Frame height fitted to a subject: see THE FRAMES ARE FITTED, in STAGE. */
+	#fitHeight(frame, subjectWidth, fill) {
+		return this.glyph.scale.x * Math.max(frame, (subjectWidth * fill) / this.aspectRatio);
+	}
+
+	/**
+	 * The frame at the park, where ALIGN ends and MORPH_IN begins: see
+	 * STAGE.PARK_OVER.
+	 */
+	#parkHeight(s) {
+		const travel = VIEW_HEIGHT / this.zoomTravel;
+		const word = this.#fitHeight(STAGE.MARK_FRAME, this.mark?.width ?? 1.6, STAGE.MARK_FILL);
+		return clamp(word, JOURNEY.FRAME_MOUTH * s * STAGE.PARK_OVER, travel);
+	}
+
+	/** Square on to the stair, the way the step view is, framed on name i. */
+	#itemShot(i) {
+		this.#orbitCamera(ORBIT.STEPS, this.scratch);
+		return {
+			dir: new THREE.Vector3(0, 0, -1).applyQuaternion(this.scratch.quaternion),
+			centre: new THREE.Vector3()
+				.fromArray(STEP_FRONTS[i].point)
+				.applyMatrix4(this.glyph.matrixWorld),
+			height: this.#fitHeight(STAGE.ITEM_FRAME, LABEL.width, STAGE.ITEM_FILL),
+		};
+	}
+
+	/** Face on to the AAXLO word, at the travel elevation, the word centred. */
+	#markShot() {
+		const facing = new THREE.Vector3().fromArray(AaxloMark.FACING);
+		return {
+			dir: heading(azimuth(facing.negate()), -ORBIT.EL_TRAVEL),
+			centre: new THREE.Vector3()
+				.fromArray(AaxloMark.CENTRE)
+				.applyMatrix4(this.glyph.matrixWorld),
+			height: this.#fitHeight(STAGE.MARK_FRAME, this.mark?.width ?? 1.6, STAGE.MARK_FILL),
+		};
 	}
 
 	/* ------------------------------------------------------------- the dive */
@@ -1486,7 +1769,7 @@ export default class Scene {
 		const bore = this.boreFrame();
 		const align = this.#alignAnchors(bore);
 
-		const { pos, dir, ortho, k } = this.#ridePose(h, bore, align);
+		const { pos, dir, ortho, k, park } = this.#ridePose(h, bore, align);
 
 		// The lean, and the up it produces. Zero everywhere the road is
 		// straight — which includes the whole traverse, and therefore the
@@ -1514,6 +1797,12 @@ export default class Scene {
 			}
 			this.camera.position.copy(pos);
 			this.camera.quaternion.copy(quat);
+			// The frame, the orbit's to the park's, geometrically: a zoom
+			// read as even. MORPH_IN takes over from exactly that frame.
+			const live = VIEW_HEIGHT / this.camera.zoom;
+			const height = live * (this.#parkHeight(bore.s) / live) ** park;
+			this.camera.zoom = VIEW_HEIGHT / height;
+			this.camera.updateProjectionMatrix();
 			this.camera.updateMatrixWorld(true);
 			return;
 		}
@@ -1637,12 +1926,14 @@ export default class Scene {
 			const dir = heading(align.az0 + align.dAz * g, align.el0 + align.dEl * w);
 			const centre = this.pivot.clone().lerp(align.park, w);
 			const pos = centre.addScaledVector(dir, -align.radius);
-			return { pos, dir, ortho: true };
+			// `park`: how far the frame has gone from the orbit's onto the
+			// park's (#applyJourney writes the zoom; the orbit's is live).
+			return { pos, dir, ortho: true, park: w };
 		}
 
 		/* ---- the perspective interlude ---- */
 		const kMin = Math.tan((JOURNEY.FOV_FLAT * Math.PI) / 360);
-		const H_TRAVEL = VIEW_HEIGHT / ORBIT.ZOOM_TRAVEL;
+		const H_PARK = this.#parkHeight(s);
 		const wIn = win(h, JOURNEY.MORPH_IN);
 		const wOut = win(h, JOURNEY.MORPH_OUT);
 		// tan(fov/2): the one number perspective-ness lives in. Animating it
@@ -1668,15 +1959,25 @@ export default class Scene {
 			// per 60 px step against 0.319 mid-bore — a 5 % crawl at the gate,
 			// then a surge. Now the mouth is entered at cruise and the only
 			// thing the window still eases is the pull away from the park.
+			//
+			// SINCE THE PARK IS TIGHT (STAGE.PARK_OVER) the frame has little
+			// left to close, and the slope that matches the traverse can ask
+			// more than the quintic gives without overshooting: it is capped,
+			// and the mouth is entered a little under cruise. Nobody drives
+			// through it: the mouth is the last anchor (STAGE.MOUTH), the
+			// camera comes to rest there, and the free road starts from it.
 			const wD = rampTo(
 				clamp(
 					(h - JOURNEY.MORPH_IN[0]) /
 						(JOURNEY.MORPH_IN[1] - JOURNEY.MORPH_IN[0]),
 				),
-				((2 * K_MAX * s * RIDE_RATE) / (H_TRAVEL - JOURNEY.FRAME_MOUTH * s)) *
-					(JOURNEY.MORPH_IN[1] - JOURNEY.MORPH_IN[0]),
+				Math.min(
+					RAMP_SLOPE_MAX,
+					((2 * K_MAX * s * RIDE_RATE) / (H_PARK - JOURNEY.FRAME_MOUTH * s)) *
+						(JOURNEY.MORPH_IN[1] - JOURNEY.MORPH_IN[0]),
+				),
 			);
-			const Hn = lerp(H_TRAVEL, JOURNEY.FRAME_MOUTH * s, wD);
+			const Hn = lerp(H_PARK, JOURNEY.FRAME_MOUTH * s, wD);
 			return {
 				pos: mouth.clone().addScaledVector(axisDir, -Hn / (2 * k)),
 				dir: axisDir.clone(), // GAZE_IN ended with ALIGN: heading held
@@ -2089,6 +2390,8 @@ export default class Scene {
 		if (!this.glyph || !this.menuTexts || this.engravings) return;
 		this.engravings = new StepEngravings(this.glyph, this.menuTexts);
 		this.mark = new AaxloMark(this.glyph);
+		// The word is part of what the travel frame has to hold.
+		this.#fitTravelZoom();
 	}
 
 	/** Where the two poses that matter sit on the scroll, for anyone wiring UI. */
@@ -2121,6 +2424,7 @@ export default class Scene {
 		if (this.glyph) {
 			this.#place(this.glyph, this.#layout(), GLYPH_INK);
 			this.#updateRig();
+			this.#fitTravelZoom();
 			this.#addRoom();
 			if (this.projector) {
 				for (const mesh of this.projectedMeshes) this.projector.applyTo(mesh);

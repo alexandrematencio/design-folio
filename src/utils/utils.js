@@ -130,7 +130,12 @@ const ramp = (d, { dead, ramp: len }) => smoothstep(clamp((d - dead) / len));
  */
 export function orbitPose(
 	progress,
-	{ lit: litRamp = ORBIT.LIT, travelReturn = null } = {},
+	{
+		lit: litRamp = ORBIT.LIT,
+		travelReturn = null,
+		// v2 only: the travel zoom fitted to the frame (Scene.#fitTravelZoom).
+		zoomTravel = ORBIT.ZOOM_TRAVEL,
+	} = {},
 ) {
 	const s = wrap01(progress);
 	const d = distanceFromRest(s);
@@ -148,7 +153,7 @@ export function orbitPose(
 		// the steps are read from above: the treads become wider than the
 		// risers and the menu inverts.
 		tiltDown: (ORBIT.EL_REST - ORBIT.EL_TRAVEL) * travel,
-		zoom: lerp(1, ORBIT.ZOOM_TRAVEL, travel),
+		zoom: lerp(1, zoomTravel, travel),
 		recentre: travel,
 		litness: lit,
 		pageOpacity:

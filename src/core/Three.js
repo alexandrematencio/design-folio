@@ -1,8 +1,9 @@
 import * as THREE from "three";
 import Lenis from "lenis";
 import WebGLContext from "./WebGLContext";
-import Scene from "../scenes/Scene";
+import Scene, { STAGE, stageProgress } from "../scenes/Scene";
 import Gallery, { GALLERY } from "../scenes/Gallery";
+import StageNav from "./StageNav";
 
 export { GALLERY };
 
@@ -60,11 +61,13 @@ class Three {
 		// return from a photograph: pins t and parks the orbit on the plateau.
 		this.galleryOverride = null;
 
-		// The gentle pull onto the rest pose (v2 only, options.journey). One
-		// scrollTo per approach: armed while far from a rest multiple, spent
-		// the moment it fires, re-armed by leaving. Without the latch the
-		// easing would be restarted every frame and never land.
-		this.snapSpent = false;
+		// v2 only: the stage the scroll stands at (scenes/Scene.js, STAGE),
+		// null on the free road. stageOverride pins it, as progressOverride
+		// pins the progress: the return from a dive lands on an anchor.
+		this.stage = null;
+		this.stageOverride = null;
+		// v2 only: one gesture, one anchor (core/StageNav.js).
+		this.nav = null;
 
 		// Stops the camera and the flat-to-lit ramp from being recomputed,
 		// without stopping rendering — so a tool can set a uniform by hand and
@@ -90,6 +93,7 @@ class Three {
 			if (spacer) spacer.style.height = `${GALLERY.LOOP_VH + GALLERY.VH}vh`;
 		}
 		this.#setupLenis();
+		if (this.options.journey) this.nav = new StageNav(this);
 
 		// Dev-only handle. tools/shoot.mjs drives the loop from here to take
 		// deterministic screenshots at chosen points of the scroll.
@@ -110,6 +114,9 @@ class Three {
 			smoothWheel: true,
 			syncTouch: true,
 			lerp: 0.075,
+			// The staged half of the loop takes its gestures before Lenis
+			// does: false means StageNav has it (v2 only).
+			virtualScroll: (data) => this.nav?.onInput(data) ?? true,
 		});
 	}
 
@@ -118,10 +125,10 @@ class Three {
 		const elapsed = this.clock.elapsedTime;
 
 		this.lenis?.raf(time);
-		this.#maybeSnap();
+		this.nav?.tick();
 		if (!this.paused) {
 			const progress = this.#getLoopProgress();
-			this.scene.animate(delta, elapsed, progress);
+			this.scene.animate(delta, elapsed, progress, this.stage);
 			// AFTER the scene: the gallery's camera is derived from the
 			// journey's, which this very frame has just posed.
 			if (progress > 0.3) this.galleryView?.arm();
@@ -130,46 +137,6 @@ class Three {
 		this.#render();
 
 		requestAnimationFrame((t) => this.#animate(t));
-	}
-
-	/**
-	 * THE LIGHT SNAP ONTO REST. The rest pose is the only scroll position
-	 * where the projection reassembles into the flat page EXACTLY, and asking
-	 * a visitor to park a free scroll on one number is asking them to thread
-	 * a needle. So once the scroll is close to a rest multiple — from either
-	 * direction: closing the orbit backwards, or coming up out of the tunnel
-	 * forwards — and the hand has left it, Lenis glides the last of the way.
-	 * Light on purpose: the radius is two per cent of the loop, nothing is
-	 * ever yanked mid-scroll (the velocity gate), and a dive or an override
-	 * always outranks it.
-	 */
-	#maybeSnap() {
-		const SNAP = { radius: 0.02, still: 0.05, duration: 0.6 };
-		if (!this.options.journey || this.progressOverride !== null) return;
-		if (this.scene?.dive) return;
-		const lenis = this.lenis;
-		if (!lenis?.limit) return;
-
-		const nearest = Math.round(lenis.scroll / lenis.limit) * lenis.limit;
-		const d = Math.abs(lenis.scroll - nearest) / lenis.limit;
-
-		if (d > SNAP.radius) {
-			this.snapSpent = false;
-			return;
-		}
-		// A hand on the wheel re-arms it too: a nudge that never leaves the
-		// radius would otherwise strand the scroll just off rest, spent.
-		if (Math.abs(lenis.velocity) > SNAP.still) {
-			this.snapSpent = false;
-			return;
-		}
-		if (this.snapSpent || d < 1e-4) return;
-
-		this.snapSpent = true;
-		lenis.scrollTo(nearest, {
-			duration: SNAP.duration,
-			easing: (t) => 1 - (1 - t) ** 3,
-		});
 	}
 
 	#setGallery(t) {
@@ -184,12 +151,23 @@ class Three {
 			this.#setGallery(this.galleryOverride);
 			return GALLERY.PLATEAU;
 		}
+		this.stage = null;
+		if (this.stageOverride !== null) {
+			this.#setGallery(0);
+			this.stage = this.stageOverride;
+			return stageProgress(this.stage);
+		}
 		if (this.progressOverride !== null) {
 			this.#setGallery(0);
 			return this.progressOverride;
 		}
 		const limit = this.lenis?.limit;
-		if (!limit) return 0;
+		if (!limit) {
+			// Before Lenis has measured the page: the rest pose, which on v2
+			// is stage 0.
+			if (this.options.journey) this.stage = 0;
+			return 0;
+		}
 		const raw = (this.lenis.scroll % limit) / limit;
 		const u = raw < 0 ? raw + 1 : raw;
 
@@ -200,6 +178,13 @@ class Three {
 		}
 
 		const { a, g, k } = span();
+		const { mouth } = this.zones();
+		if (u < mouth) {
+			// The staged half: the scroll carries the stage, the stage the road.
+			this.#setGallery(0);
+			this.stage = (STAGE.COUNT * u) / mouth;
+			return stageProgress(this.stage);
+		}
 		if (u < a) {
 			this.#setGallery(0);
 			return u * k;
@@ -225,6 +210,24 @@ class Three {
 		if (!this.options.journey) return limit * p;
 		const { g, k } = span();
 		return limit * (p <= GALLERY.PLATEAU ? p / k : p / k + g);
+	}
+
+	/**
+	 * The staged half of the loop, in raw scroll fractions (v2 only): it runs
+	 * from 0 to `mouth`, where the free road picks up at exactly the progress
+	 * the last anchor stands at; the free road ends at `exit`, inside the
+	 * plateau, and the rest of the loop is the close (core/StageNav.js).
+	 */
+	zones() {
+		const { a, g, k } = span();
+		return { mouth: STAGE.MOUTH / k, exit: a + g * GALLERY.EXIT };
+	}
+
+	/** The scroll offset of a stage — an anchor when s is whole. */
+	scrollForStage(s) {
+		const limit = this.lenis?.limit ?? 0;
+		const clamped = Math.min(STAGE.COUNT, Math.max(0, s));
+		return (limit * this.zones().mouth * clamped) / STAGE.COUNT;
 	}
 
 	scrollForGallery(t) {
