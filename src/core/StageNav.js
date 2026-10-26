@@ -172,7 +172,10 @@ export default class StageNav {
 	/**
 	 * Lenis's virtualScroll hook: true lets Lenis have the event, false keeps
 	 * it — and then the default has to be prevented here, since Lenis no
-	 * longer will. Never on touchstart: that would kill the tap.
+	 * longer will. Never on touchstart nor touchend: either kills the tap —
+	 * a touchend whose default is prevented synthesises no click, and the
+	 * carved names went dead under a finger. A touchend scrolls nothing
+	 * anyway; the touchmoves are what must be held.
 	 */
 	onInput({ deltaX, deltaY: rawY, event }) {
 		// A trackpad pinch arrives as a wheel with ctrlKey: it is the
@@ -184,7 +187,8 @@ export default class StageNav {
 		const type = event.type;
 		const touch = type.startsWith("touch");
 		const keep = () => {
-			if (type !== "touchstart" && event.cancelable) event.preventDefault();
+			if (type === "touchmove" && event.cancelable) event.preventDefault();
+			else if (!touch && event.cancelable) event.preventDefault();
 			return false;
 		};
 
