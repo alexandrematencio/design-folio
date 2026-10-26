@@ -29,9 +29,9 @@ const QUERY = `*[_id=="hubPage"][0].seo{title,description}`;
 const TIMEOUT = 4000;
 
 export const DEFAULTS = {
-	title: "Alexandre Xavier Matencio — Designer & Photographer",
+	title: "Alexandre Xavier Matencio — Artist & Designer",
 	description:
-		"Alexandre Xavier Matencio, art director, designer and photographer near Paris. His photography portfolio, his journal and his digital agency.",
+		"Alexandre Xavier Matencio, artist and designer near Paris. Street, landscape and portrait photography, and a journal on how people think and behave in crowds.",
 };
 
 /** Pulls the Studio's values and rewrites the file only when they changed. */
