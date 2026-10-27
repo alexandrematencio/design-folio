@@ -50,7 +50,7 @@ const DESTINATIONS = {
 	journal: { url: "https://blog.amatencio.com/", veil: "#fafaf8" },
 	// Trailing slash: it is what `a.href` reads back, and the dev check below
 	// compares the two.
-	agency: { url: "https://www.aaxlo.com/", veil: "#1e1e1e" },
+	agency: { url: "https://aaxlo.com/", veil: "#1e1e1e" },
 	photography: {
 		url: "https://photo.amatencio.com/",
 		veil: "#ffffff",
