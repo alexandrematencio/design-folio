@@ -29,5 +29,7 @@ Disallow: /
 
 User-agent: *
 Allow: /
+# Le Studio vit sous amatencio.com/studio depuis le 2026-10-23 (mot de passe).
+Disallow: /studio
 
 Sitemap: https://amatencio.com/sitemap.xml
