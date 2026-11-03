@@ -2,6 +2,9 @@
 """
 Takes the bevel off the glyph: glyph-alxmtnc-3d-v2.glb -> -v3.glb.
 
+The v2 model is no longer shipped: it is read from git history (SOURCE_REV),
+the last commit where it was still in public/models/.
+
 The v2 solid was exported from Blender with a 0.012 bevel in two segments on
 every edge (normals at 22.5 and 45 degrees). Small as it is, under a softbox
 those two facets catch a graded highlight along every edge, and the stair
@@ -31,10 +34,12 @@ Pure stdlib.
 
 import json
 import struct
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SRC = ROOT / "public" / "models" / "glyph-alxmtnc-3d-v2.glb"
+SRC = "public/models/glyph-alxmtnc-3d-v2.glb"
+SOURCE_REV = "d66d3a0"
 DST = ROOT / "public" / "models" / "glyph-alxmtnc-3d-v3.glb"
 GRID = 0.25
 BEVEL = 0.02  # anything further than this from the grid is not a bevel
@@ -51,7 +56,8 @@ GUTTER = 8
 
 
 def load(path):
-    data = path.read_bytes()
+    data = subprocess.run(["git", "show", f"{SOURCE_REV}:{path}"], cwd=ROOT,
+                          check=True, capture_output=True).stdout
     assert data[:4] == b"glTF"
     offset, chunks = 12, []
     while offset < len(data):

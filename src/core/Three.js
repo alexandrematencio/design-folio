@@ -4,6 +4,7 @@ import WebGLContext from "./WebGLContext";
 import Scene, { STAGE, stageProgress } from "../scenes/Scene";
 import Gallery, { GALLERY } from "../scenes/Gallery";
 import StageNav from "./StageNav";
+import { createStudioToneMapping } from "../utils/studioToneMapping";
 
 export { GALLERY };
 
@@ -264,6 +265,9 @@ class Three {
 	#render() {
 		const renderer = this.context.renderer;
 		if (!renderer) return;
+		// AgX at 0.3, mixed in by the studio amount: nothing at rest.
+		this.tone ??= createStudioToneMapping();
+		this.tone.apply(renderer, this.scene.studio?.value ?? 0);
 		const view = this.galleryView;
 		const pass = view?.pass ?? "none";
 

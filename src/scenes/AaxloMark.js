@@ -82,9 +82,139 @@ function buildGeometry() {
 	});
 }
 
+/**
+ * THE STUDIO'S LOOK, on the pages that have one (Scene.js, SHADING.studio).
+ *
+ * Alexandre, 2026-11-03: beside the stair the word read "bien trop matte",
+ * and it floated — no contact with the floor. It was a plain plastic at
+ * roughness 0.55 with nothing to reflect, next to a lacquered solid that
+ * mirrors the room's softboxes. So it takes the stair's lacquer and, at a
+ * fraction, the stair's environment. A flat face under an orthographic eye
+ * mirrors ONE direction, so the room alone paints each face one value — the
+ * flat look again, only greyer. What varies across a face has to come from
+ * where it is, and that is the floor:
+ *   - the studio bake's floor map, which the word is now baked into
+ *     (tools/bake-glyph-studio.py): the sky the floor around it loses, the
+ *     word loses too — dark at its foot, opening up as it rises;
+ *   - the floor IN the lacquer, traced per pixel (see `floor` below).
+ * All of it rides the studio ramp, like the stair's own bake: at rest the
+ * word is hidden behind the stair anyway, and it is the word it always was.
+ */
+const STUDIO_LOOK = {
+	// How much of the stair's room the lacquer reflects. 1 is the stair's own,
+	// whose ceiling is driven far past white on purpose (the treads must
+	// clip): on the word it greyed every face and lit every top edge into a
+	// white line. Tuned on the AAXLO shot: a sheen, the ink kept.
+	env: 0.15,
+	// How far up the floor's shade reaches on the word, glyph units.
+	reach: HEIGHT * 0.9,
+	// The share of the floor's occlusion left at the top of that reach.
+	top: 0.35,
+	// The floor in the lacquer. The stair's environment has a near-black
+	// ground on purpose (the risers must stay cobalt), so it cannot give the
+	// word what a black lacquer on a white floor shows in every product shot:
+	// the floor, bright up the lower half of each letter, cut dark at the
+	// very foot by the contact shadow. Traced here per pixel instead: the
+	// view ray mirrored off the face down to the floor plane, the floor's
+	// light read from the bake where it lands. This is the paper's radiance.
+	floor: 0.95,
+	// FLAGGED, as a photographer would: with the whole white floor in it, the
+	// lacquer went mid-grey and the word stopped being black. Only the floor
+	// near the word is lit in the reflection — it fades over this distance,
+	// glyph units, from the foot — so the reflection is a band low on each
+	// letter, cut by the contact shadow, and the rest stays ink.
+	falloff: HEIGHT * 0.6,
+	// The grazing flanks went to white threads at full Schlick: capped.
+	grazing: 0.2,
+};
+
+function patchStudio(material, look) {
+	const uniforms = {
+		uMarkMap: { value: look.bake.floorMap },
+		uMarkMin: { value: new THREE.Vector2(...look.bake.floor.min) },
+		uMarkMax: { value: new THREE.Vector2(...look.bake.floor.max) },
+		uMarkFloor: { value: look.bake.floor.y },
+		uMarkContrast: { value: look.contrast },
+		uMarkReach: { value: STUDIO_LOOK.reach },
+		uMarkTop: { value: STUDIO_LOOK.top },
+		uMarkFloorRefl: { value: STUDIO_LOOK.floor },
+		uMarkFalloff: { value: STUDIO_LOOK.falloff },
+		uMarkGrazing: { value: STUDIO_LOOK.grazing },
+		uMarkStudio: look.studio,
+		uMarkToGlyph: look.toGlyph,
+	};
+	material.onBeforeCompile = (shader) => {
+		Object.assign(shader.uniforms, uniforms);
+		shader.vertexShader = shader.vertexShader
+			.replace(
+				"#include <common>",
+				`#include <common>
+				uniform mat4 uMarkToGlyph;
+				varying vec3 vMarkGlyph;`,
+			)
+			.replace(
+				"#include <begin_vertex>",
+				`#include <begin_vertex>
+				vMarkGlyph = ( uMarkToGlyph * modelMatrix * vec4( transformed, 1.0 ) ).xyz;`,
+			);
+		shader.fragmentShader = shader.fragmentShader
+			.replace(
+				"#include <common>",
+				`#include <common>
+				uniform sampler2D uMarkMap;
+				uniform vec2 uMarkMin;
+				uniform vec2 uMarkMax;
+				uniform float uMarkFloor;
+				uniform float uMarkContrast;
+				uniform float uMarkReach;
+				uniform float uMarkTop;
+				uniform float uMarkStudio;
+				uniform float uMarkFloorRefl;
+				uniform float uMarkFalloff;
+				uniform float uMarkGrazing;
+				uniform mat4 uMarkToGlyph;
+				varying vec3 vMarkGlyph;`,
+			)
+			.replace(
+				"#include <opaque_fragment>",
+				`{
+					vec2 _muv = ( vMarkGlyph.xz - uMarkMin ) / ( uMarkMax - uMarkMin );
+					float _occ = pow( texture2D( uMarkMap, _muv ).r, uMarkContrast );
+					float _up = smoothstep( 0.0, uMarkReach, vMarkGlyph.y - uMarkFloor );
+					_occ = mix( _occ, mix( 1.0, _occ, uMarkTop ), _up );
+					outgoingLight *= mix( 1.0, _occ, uMarkStudio );
+
+					vec3 _n = normalize( normal );
+					vec3 _r = reflect( - geometryViewDir, _n );
+					vec3 _rg = normalize( mat3( uMarkToGlyph ) * inverseTransformDirection( _r, viewMatrix ) );
+					if ( _rg.y < 0.0 ) {
+						float _t = ( vMarkGlyph.y - uMarkFloor ) / max( - _rg.y, 1e-4 );
+						vec2 _hit = ( vMarkGlyph.xz + _rg.xz * _t - uMarkMin ) / ( uMarkMax - uMarkMin );
+						float _lit = pow( texture2D( uMarkMap, _hit ).r, uMarkContrast );
+						// Schlick, the base's 4 % and the coat's on top of it.
+						float _f = 0.04 + 0.96 * pow( 1.0 - saturate( dot( _n, geometryViewDir ) ), 5.0 );
+						_f = min( _f * ( 1.0 + material.clearcoat ), uMarkGrazing );
+						_lit *= exp( - _t * length( _rg.xz ) / uMarkFalloff );
+						// Off the floor plane's own horizon smoothly, and only
+						// in the studio.
+						_f *= smoothstep( 0.0, 0.08, - _rg.y ) * uMarkStudio;
+						outgoingLight += uMarkFloorRefl * _lit * _f;
+					}
+				}
+				#include <opaque_fragment>`,
+			);
+	};
+	material.customProgramCacheKey = () => "aaxlo-studio";
+	return uniforms;
+}
+
 export class AaxloMark {
-	/** @param {THREE.Object3D} glyph  the solid; the mark rides on it */
-	constructor(glyph) {
+	/**
+	 * @param {THREE.Object3D} glyph  the solid; the mark rides on it
+	 * @param {object} [look]  the studio, on the pages that have one:
+	 *   { envMap, surface, bake, studio, toGlyph, contrast }
+	 */
+	constructor(glyph, look = null) {
 		this.group = new THREE.Group();
 		this.group.name = "aaxlo-mark";
 		this.hovered = false;
@@ -98,13 +228,24 @@ export class AaxloMark {
 		inner.scale.set(s, -s, s);
 
 		this.parts = buildGeometry().map(({ fill, geometry }) => {
-			const material = new THREE.MeshStandardMaterial({
-				color: new THREE.Color(fill),
-				roughness: 0.55,
-				metalness: 0,
-				emissive: new THREE.Color(fill),
-				emissiveIntensity: 0,
-			});
+			const material = look
+				? new THREE.MeshPhysicalMaterial({
+						color: new THREE.Color(fill),
+						metalness: 0,
+						emissive: new THREE.Color(fill),
+						emissiveIntensity: 0,
+						envMap: look.envMap,
+						envMapIntensity: STUDIO_LOOK.env,
+						...look.surface,
+					})
+				: new THREE.MeshStandardMaterial({
+						color: new THREE.Color(fill),
+						roughness: 0.55,
+						metalness: 0,
+						emissive: new THREE.Color(fill),
+						emissiveIntensity: 0,
+					});
+			if (look?.bake) patchStudio(material, look);
 			const mesh = new THREE.Mesh(geometry, material);
 			mesh.castShadow = true;
 			mesh.receiveShadow = true;

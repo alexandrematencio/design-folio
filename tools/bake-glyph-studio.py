@@ -45,7 +45,11 @@ at a real distance, into two maps:
   on the floor and on the AAXLO mark alike. The maps carry the rest.
 
   glyph-alxmtnc-3d-v3.floor.png — the floor under the stair: what it receives
-    with the stair standing on it over what it receives without. 1 far away,
+    with the stair standing on it over what it receives without. The AAXLO
+    mark stands on it too (tools/aaxlo-mark.obj, written by
+    tools/export-aaxlo-mark.mjs from the page itself): its contact with the
+    floor is in the map, and the word reads the map back to darken its own
+    foot (scenes/AaxloMark.js). 1 far away,
     darkest at the contact. Rect in the stair's own coordinates in the .json.
     Baked with the stair in its own cobalt, so the matte floor also carries
     the faint blue the stair throws onto it: R the occlusion, G and B the
@@ -75,6 +79,10 @@ import numpy as np
 ROOT = Path(__file__).resolve().parent.parent
 MODELS = ROOT / "public" / "models"
 NAME = "glyph-alxmtnc-3d-v3"
+MARK = ROOT / "tools" / "aaxlo-mark.obj"
+# The word's albedo for the floor bake: a black lacquer, and the coral O is
+# too small to tint the floor anyone would see.
+MARK_ALBEDO = 0.02
 
 ATLAS = 1024
 # tools/sharpen-glyph.py's gutter between islands: each island may bleed
@@ -361,6 +369,19 @@ def main():
         obj.rotation_euler = mathutils.Vector(tuple(-d)).to_track_quat("-Z", "Y").to_euler()
         scene.collection.objects.link(obj)
 
+    # The AAXLO mark, in the same glTF space as the stair: the OBJ importer's
+    # default axes (forward -Z, up Y) are the glTF importer's.
+    bpy.ops.wm.obj_import(filepath=str(MARK), forward_axis="NEGATIVE_Z", up_axis="Y")
+    mark = next(o for o in bpy.context.selected_objects if o.type == "MESH")
+    mark.data.materials.clear()
+    mark.data.materials.append(diffuse_material("Mark", MARK_ALBEDO))
+    mb = [mark.matrix_world @ v.co for v in mark.data.vertices]
+    print(f"mark: {len(mark.data.polygons)} faces, foot at {min(v.z for v in mb):.4f} "
+          f"(stair's {bottom:.4f})")
+    assert abs(min(v.z for v in mb) - bottom) < 1e-3, "the mark does not stand on the floor"
+    # Not in the stair's own light: the stair's atlas is the stair's.
+    mark.hide_render = True
+
     # 1. The stair's light, and its normals to sort the texels by.
     light = float_image("light", ATLAS, ATLAS)
     bake_target(gmat, light)
@@ -418,12 +439,15 @@ def main():
     gmat.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (*COBALT, 1)
     with_ = float_image("floor_with", FLOOR_RES, FLOOR_RES)
     bake_target(fmat, with_)
+    mark.hide_render = False
     bake(floor, "DIFFUSE", margin=0, pass_filter={"DIRECT", "INDIRECT"})
     glyph.hide_render = True
+    mark.hide_render = True
     without = float_image("floor_without", FLOOR_RES, FLOOR_RES)
     fmat.node_tree.nodes.active.image = without
     bake(floor, "DIFFUSE", margin=0, pass_filter={"DIRECT", "INDIRECT"})
     glyph.hide_render = False
+    mark.hide_render = False
     everywhere = np.ones((FLOOR_RES, FLOOR_RES), bool)
     RGB = np.stack([smooth(pixels(with_)[..., c], everywhere) for c in range(3)], -1)
     A = RGB.mean(axis=2)
@@ -450,7 +474,23 @@ def main():
         xs = [mesh.vertices[i].co.x for i in poly.vertices]
         zs = [-mesh.vertices[i].co.y for i in poly.vertices]
         feet |= (X > min(xs)) & (X < max(xs)) & (Z > min(zs)) & (Z < max(zs))
-    print(f"floor: {feet.sum()} texels under the feet, filled from around them")
+    # The word's feet, the same way: every triangle of its underside. The
+    # letters' bottoms are not all on one line in the SVG — the round ones dip
+    # a hair — so "on the floor" is within a fraction of a floor texel.
+    before = feet.sum()
+    for poly in mark.data.polygons:
+        vs = [mark.matrix_world @ mark.data.vertices[i].co for i in poly.vertices]
+        if any(abs(v.z - bottom) > 0.006 for v in vs) or len(vs) != 3:
+            continue
+        (ax, az), (bx, bz), (cx, cz) = [(v.x, -v.y) for v in vs]
+        d = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz)
+        if abs(d) < 1e-12:
+            continue
+        l1 = ((bz - cz) * (X - cx) + (cx - bx) * (Z - cz)) / d
+        l2 = ((cz - az) * (X - cx) + (ax - cx) * (Z - cz)) / d
+        feet |= (l1 > 0) & (l2 > 0) & (1 - l1 - l2 > 0)
+    print(f"floor: {before} texels under the stair's feet, {feet.sum() - before} "
+          "under the word's, filled from around them")
     F = fill_holes(F, feet)
     tint_rg = fill_holes(tint_rg, feet)
     tint_b = fill_holes(tint_b, feet)

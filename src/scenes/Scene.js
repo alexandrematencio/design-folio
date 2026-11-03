@@ -2467,7 +2467,17 @@ export default class Scene {
 	#buildEngravings() {
 		if (!this.glyph || !this.menuTexts || this.engravings) return;
 		this.engravings = new StepEngravings(this.glyph, this.menuTexts);
-		this.mark = new AaxloMark(this.glyph);
+		this.mark = new AaxloMark(
+			this.glyph,
+			this.shading.studio && {
+				envMap: this.studioEnv,
+				surface: this.shading.surface,
+				bake: this.studioBake,
+				studio: this.studio,
+				toGlyph: this.toGlyph,
+				contrast: this.shading.studio.contrast,
+			},
+		);
 		// The word is part of what the travel frame has to hold.
 		this.#fitTravelZoom();
 	}
