@@ -5,9 +5,14 @@ import HtmlToCanvas from "../utils/HtmlToCanvas";
 import { collectDocumentCss } from "../utils/collectDocumentCss";
 import { createProjector } from "../utils/ProjectedMaterial";
 import { patchGlyphMaterial } from "../utils/GlyphMaterial";
-import { attachLightBake } from "../utils/glyphLightBake";
+import {
+	attachLightBake,
+	loadStudioBake,
+	patchFloorContact,
+} from "../utils/glyphLightBake";
 import { loadGltf, firstMesh } from "../utils/ImportGltf";
 import { createStudioEnvironment } from "../utils/studioEnvironment";
+import { createFilmGrain } from "../utils/filmGrain";
 import {
 	ORBIT,
 	orbitPose,
@@ -35,7 +40,7 @@ const COBALT = "#0013FF"; // brand --color-accent
  */
 const BOUNCE = "#BDBED9";
 
-const MODEL = "glyph-alxmtnc-3d-v2";
+const MODEL = "glyph-alxmtnc-3d-v3";
 
 /**
  * TWO PAGES, TWO INKING RULES.
@@ -140,6 +145,23 @@ const SHADING = {
 		// and what the visitor sees move afterwards is the studio, not a
 		// mix. Done by progress 0.012, before the key's edge arrives.
 		orbit: { lit: { dead: 0.004, ramp: 0.02 } },
+		// THE REAL STUDIO (tools/bake-glyph-studio.py). At rest the stair
+		// stands in the one perfect light, which is the logo; as the visitor
+		// leaves, it settles into a real studio — corners closing in, the
+		// softbox falling off across each face, the floor darkening where the
+		// stair stands on it. Faded in on the TRAVEL ramp, which starts after
+		// the flat-to-lit crossfade is over, so the lit render at rest still
+		// lands on the logo's values and the crossfade stays invisible.
+		// contrast is a power on the bake (1 = what Cycles measured): the
+		// highlight shoulder folds the blues near the top, so the physical
+		// ratios come out flatter on screen than in the studio, and this is
+		// what gives them back. specular is the share of the shadows the
+		// reflections take. bounce is how much of the cobalt the matte floor
+		// takes back around the stair; edge, the strength of the thread of
+		// light on the convex edges; grain, the film grain's amplitude, as a
+		// share of the displayed value (half of it either way). All three
+		// ride the same ramp, so at rest there is none of them.
+		studio: { contrast: 1.8, specular: 0.5, bounce: 0.4, edge: 1, grain: 0.022 },
 		glyph: {
 			bounce: BOUNCE,
 			knee: 0.9,
@@ -880,6 +902,20 @@ export default class Scene {
 		// Tools only: shoot.mjs pins this to photograph the LIT skin at the
 		// rest angle, where litness is normally 0 by definition.
 		this.litnessOverride = null;
+		// The real studio's share of the light, 0 at rest (see SHADING).
+		this.studio = { value: 0 };
+		this.studioBake = null;
+		// The film grain's pattern number. Held still under reduced motion: a
+		// grain that does not crawl is still a grain.
+		this.grainSeed = { value: 0 };
+		this.grainAmount = { value: 0 };
+		this.grain = null;
+		this.grainStill =
+			typeof window !== "undefined" &&
+			window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+		// The stair's world matrix, inverted: the floor's bake is in its
+		// coordinates.
+		this.toGlyph = { value: new THREE.Matrix4() };
 		// Fades the projected page off the room as the visitor travels away.
 		this.pageOpacity = { value: 1 };
 
@@ -1024,8 +1060,14 @@ export default class Scene {
 		this.key.shadow.mapSize.set(2048, 2048);
 		this.key.shadow.camera.near = 1;
 		this.key.shadow.camera.far = 160;
-		this.key.shadow.radius = 5;
-		this.key.shadow.blurSamples = 16;
+		// Wide: a softbox's shadow, opening up away from the object. The
+		// density at the contact is the studio bake's job now (see SHADING),
+		// so this one can afford to be soft — which also blurs the comb the
+		// map's coarse texels draw at the menu's grazing eye. Pages without
+		// the bake (index.html, frozen) keep the shadow they shipped with.
+		const soft = Boolean(this.shading.studio);
+		this.key.shadow.radius = soft ? 10 : 5;
+		this.key.shadow.blurSamples = soft ? 24 : 16;
 		this.key.shadow.bias = -0.0002;
 		this.key.shadow.normalBias = 0.04;
 		this.scene.add(this.key);
@@ -1058,6 +1100,11 @@ export default class Scene {
 		if (this.shading.glyph.bounce) {
 			await attachLightBake(source.geometry, `${base}models/${MODEL}.light.json`);
 		}
+		if (this.shading.studio) {
+			this.studioBake = await loadStudioBake(source.geometry, `${base}models/${MODEL}`);
+			this.grain = createFilmGrain({ amount: this.grainAmount, seed: this.grainSeed });
+			this.scene.add(this.grain.mesh);
+		}
 
 		this.#addGlyph(source);
 		this.#addRoom();
@@ -1084,6 +1131,15 @@ export default class Scene {
 			paper: PAPER,
 			cobalt: COBALT,
 			...this.shading.glyph,
+			studio: this.studioBake && {
+				map: this.studioBake.studioMap,
+				range: this.studioBake.range,
+				amount: this.studio,
+				contrast: this.shading.studio.contrast,
+				specular: this.shading.studio.specular,
+				edges: this.studioBake.edges,
+				edge: this.shading.studio.edge,
+			},
 		});
 
 		const mesh = new THREE.Mesh(source.geometry, material);
@@ -1201,6 +1257,19 @@ export default class Scene {
 		shadow.near = 1;
 		shadow.far = radius * 6;
 		shadow.updateProjectionMatrix();
+	}
+
+	/** The page onto a room surface, then the studio's contact shadow over it. */
+	#project(mesh) {
+		this.projector.applyTo(mesh);
+		if (!this.studioBake) return;
+		patchFloorContact(mesh.material, {
+			bake: this.studioBake,
+			toGlyph: this.toGlyph,
+			studio: this.studio,
+			contrast: this.shading.studio.contrast,
+			bounce: this.shading.studio.bounce,
+		});
 	}
 
 	#disposeRoom() {
@@ -1337,7 +1406,7 @@ export default class Scene {
 			pageOpacity: this.pageOpacity,
 		});
 
-		for (const mesh of this.projectedMeshes) this.projector.applyTo(mesh);
+		for (const mesh of this.projectedMeshes) this.#project(mesh);
 		this.projector.update();
 
 		this.#rasterizePage();
@@ -1429,6 +1498,15 @@ export default class Scene {
 		this.camera.updateMatrixWorld(true);
 
 		this.litness.value = this.litnessOverride ?? pose.litness;
+		if (this.studioBake) {
+			this.studio.value = pose.travel;
+			// A new pattern at film's 24 frames a second, not the display's
+			// 60: at 60 it reads as video noise, at 24 as an emulsion.
+			if (!this.grainStill) this.grainSeed.value = Math.floor(elapsed * 24) % 61;
+			this.grainAmount.value = this.studio.value * this.shading.studio.grain;
+			this.grain.update();
+			this.toGlyph.value.copy(this.glyph.matrixWorld).invert();
+		}
 
 		this.renderCamera = this.camera;
 		if (this.journey) this.#applyJourney(progress);
@@ -2427,7 +2505,7 @@ export default class Scene {
 			this.#fitTravelZoom();
 			this.#addRoom();
 			if (this.projector) {
-				for (const mesh of this.projectedMeshes) this.projector.applyTo(mesh);
+				for (const mesh of this.projectedMeshes) this.#project(mesh);
 			}
 		}
 

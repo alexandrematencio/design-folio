@@ -1,7 +1,7 @@
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 /**
- * Thin promise wrapper around GLTFLoader. No Draco: glyph-alxmtnc-3d-v2.glb is
+ * Thin promise wrapper around GLTFLoader. No Draco: glyph-alxmtnc-3d-v3.glb is
  * 28 kB uncompressed (756 vertices), so a decoder would cost more than it saves
  * and would add a third-party fetch the brand rules do not want.
  */
