@@ -246,7 +246,7 @@ const LAYOUT = {
  *
  * `clearText`: on a short screen (a 13" laptop, a phone on its side) the ink
  * at full size climbs into the title block — at 1200×630 it covered
- * "(scroll)". The glyph then shrinks, still centred, until its top clears the
+ * the name under the title (then "(scroll)", since removed). The glyph then shrinks, still centred, until its top clears the
  * text by TEXT_CLEARANCE (see #layout). It never grows past heightFraction.
  */
 const LAYOUT_CENTRED = {
@@ -2202,7 +2202,7 @@ export default class Scene {
 		const origin = document
 			.getElementById("page")
 			?.getBoundingClientRect();
-		const boxes = ["#page .display", "#page .copy", "#page .scroll-word"]
+		const boxes = ["#page .display", "#page .copy"]
 			.map((sel) => document.querySelector(sel)?.getBoundingClientRect())
 			.filter(Boolean);
 		if (!origin || !boxes.length) return;

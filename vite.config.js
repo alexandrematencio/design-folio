@@ -136,7 +136,7 @@ export default defineConfig({
 			input: {
 				main: resolve(__dirname, "index.html"),
 				v2: resolve(__dirname, "v2.html"),
-				// v2 with the copy taken out: the title, "(scroll)", and the
+				// v2 with the copy taken out: the title alone, and the
 				// glyph in the middle of the frame (Scene.js, LAYOUT_CENTRED).
 				// THE DOOR of amatencio.com: Caddy serves it at /.
 				v3: resolve(__dirname, "v3.html"),

@@ -222,20 +222,8 @@ body {
 	font-weight: 700;
 }
 
-/* v3: the one line left under the title, as small as the page's hint.
-   The gap of .page__inner is pulled back so it reads as the title's own
-   caption, not as a second block. */
-.scroll-word {
-	margin-top: calc(-1 * clamp(1.5rem, 4vh, 3rem) + 0.75rem);
-	font-family: var(--font-editorial);
-	font-weight: 500;
-	font-size: 12px;
-	letter-spacing: 0;
-	color: var(--color-fg-muted);
-}
-
-/* v3, the door: the title at half the size of the other pages' and, with
-   its "(scroll)", centred over the glyph. On #page itself rather than on
+/* v3, the door: the title at half the size of the other pages', centred
+   over the glyph. On #page itself rather than on
    <html>: inside the foreignObject there is no <html> to carry a class. */
 .page--door .page__inner {
 	align-items: center;
@@ -280,14 +268,18 @@ body {
 /* --------------------------------------------------------------------------
    Outside the projected page: the scroll cue (v2). Same recipe as the hero
    cue in amatencio-photo (globals.css there: `scroll-cue`, 2.4 s float,
-   0.45 → 0.9 opacity, bottom 1.5 rem, centred, ink), so the two sites tell
+   0.45 → 0.9 opacity, centred, ink — raised higher here), so the two sites tell
    the visitor the same thing the same way. Hidden until main-v2.js decides
    the visitor is a cold arrival at rest, gone for good at the first scroll.
    -------------------------------------------------------------------------- */
 #scroll-cue {
 	position: fixed;
 	left: 50%;
-	bottom: 1.5rem;
+	/* Raised off the edge (Alexandre, 2026-11-03): at 1.5 rem it sat apart
+	   from the glyph, down where the eye no longer looks, and a phone's
+	   toolbar crowds it. About halfway between the ink and the bottom of the
+	   screen, in svh so the collapsing address bar does not move it. */
+	bottom: clamp(3rem, 11svh, 7rem);
 	transform: translateX(-50%);
 	z-index: 40;
 	color: var(--color-fg);

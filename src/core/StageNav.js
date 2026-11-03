@@ -27,7 +27,8 @@ import { STAGE } from "../scenes/Scene";
  * touch is one gesture from touchstart. A gesture moves the camera once, and
  * its inertia is swallowed — otherwise a single flick would run through three
  * anchors. A hand that keeps going (a wheel turned on and on, a slow drag) is
- * not inertia, and steps again every HOLD ms (see #read).
+ * not inertia, and steps again — but only once the camera has LANDED and
+ * stood DWELL ms on the anchor (see #read).
  *
  * BUT A NEW GESTURE IS ALWAYS HEARD, even mid-move (Alexandre, 2026-10-26: on
  * the stair, swallowing everything until the camera had landed read as a page
@@ -57,6 +58,16 @@ const NAV = {
 	HOLD_RATIO: 0.6,
 	/** ...or the finger has travelled this many px since. */
 	TOUCH_HOLD: 120,
+	/**
+	 * ms a gesture that goes on must leave the camera standing on the anchor
+	 * it reached before it may step again — and while a move plays, it never
+	 * re-arms at all (Alexandre, 2026-11-03). A first-time visitor does not
+	 * know a flick is enough: they scroll on, as if a section lay below. That
+	 * scroll used to re-arm 450 ms into the 1.8 s reveal and retarget it, and
+	 * the camera ran past JOURNAL onto PHOTOGRAPHY at once. Now it lands on
+	 * JOURNAL, holds, and only then carries on, one anchor at a time.
+	 */
+	DWELL: 700,
 	/**
 	 * Seconds per leg, leg i joining anchor i to i + 1. The first is the
 	 * orbit's whole reveal; the walk down the names is short; the swing onto
@@ -130,6 +141,8 @@ export default class StageNav {
 		// for the close (its direction).
 		this.heading = null;
 		this.gesture = { at: -Infinity, sum: 0, spent: false, last: 0, peak: 0, firedAt: 0, travel: 0 };
+		// When the last move ended: a gesture that goes on waits DWELL after it.
+		this.landedAt = -Infinity;
 		this.lastZone = null;
 		this.stillSince = null;
 		this.lastScroll = null;
@@ -260,6 +273,9 @@ export default class StageNav {
 		g.peak = Math.max(g.peak, size);
 		g.travel += deltaY;
 		if (!g.spent || now - g.firedAt < NAV.HOLD) return;
+		// A hand that goes on is not a new intention: it never retargets a
+		// move, and it lets the eye rest on the anchor before the next one.
+		if (this.moving || now - this.landedAt < NAV.DWELL) return;
 		const goesOn = touch
 			? Math.abs(g.travel) >= NAV.TOUCH_HOLD
 			: size >= NAV.WHEEL && size >= NAV.HOLD_RATIO * g.peak;
@@ -312,12 +328,24 @@ export default class StageNav {
 		this.#leg(target, dir);
 	}
 
-	/** A move to anchor `target`, timed by the leg it ends on. */
-	#leg(target, dir) {
-		const leg = dir > 0 ? target - 1 : target;
-		const seconds = NAV.LEGS[leg] * (dir > 0 ? 1 : NAV.BACK);
+	/**
+	 * A move to anchor `target` from stage `from` (an anchor, or between two
+	 * on a retarget), timed by the stretch of each leg it actually covers.
+	 * It used to take the time of the leg it ENDS on, whatever lay before:
+	 * a retarget 450 ms into the 1.8 s reveal then crossed the rest of the
+	 * reveal AND the next leg in 0.75 s — the dash past the first step.
+	 */
+	#leg(target, dir, from = target - dir) {
+		const lo = Math.min(from, target);
+		const hi = Math.max(from, target);
+		let seconds = 0;
+		for (let i = Math.floor(lo); i < Math.ceil(hi); i++) {
+			const share = Math.min(hi, i + 1) - Math.max(lo, i);
+			if (share > 0) seconds += NAV.LEGS[i] * share;
+		}
+		if (dir < 0) seconds *= NAV.BACK;
 		this.heading = { stage: target, dir };
-		this.#go(this.three.scrollForStage(target), seconds, snap, true);
+		this.#go(this.three.scrollForStage(target), Math.max(0.3, seconds), snap, true);
 	}
 
 	/**
@@ -351,7 +379,7 @@ export default class StageNav {
 			target = dir > 0 ? Math.floor(s + 1e-3) + 1 : Math.ceil(s - 1e-3) - 1;
 		}
 		if (target < 0 || target > STAGE.COUNT) return;
-		this.#leg(target, dir);
+		this.#leg(target, dir, where.stage);
 	}
 
 	/**
@@ -403,6 +431,7 @@ export default class StageNav {
 			onComplete: () => {
 				this.moving = false;
 				this.heading = null;
+				this.landedAt = performance.now();
 			},
 		});
 	}
@@ -435,6 +464,7 @@ export default class StageNav {
 		if (this.moving && !lenis?.animate.isRunning) {
 			this.moving = false;
 			this.heading = null;
+			this.landedAt = now;
 		}
 		if (this.#idle()) {
 			this.lastZone = null;
