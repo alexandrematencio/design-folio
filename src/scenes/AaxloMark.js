@@ -208,6 +208,11 @@ function patchStudio(material, look) {
 		uMarkToLocal: { value: new THREE.Matrix4() },
 		uMarkStudio: look.studio,
 		uMarkToGlyph: look.toGlyph,
+		// The contact core, the floor's and the stair's (Scene.js).
+		uMarkContactDist: { value: look.bake.contactMap },
+		uMarkContactRange: { value: look.bake.contact?.range ?? 1 },
+		uMarkContactDensity: { value: look.contact?.density ?? 0 },
+		uMarkContactReach: { value: look.contact?.reach ?? 1 },
 	};
 	material.onBeforeCompile = (shader) => {
 		Object.assign(shader.uniforms, uniforms);
@@ -238,6 +243,10 @@ function patchStudio(material, look) {
 				uniform float uMarkContrast;
 				uniform float uMarkReach;
 				uniform float uMarkTop;
+				uniform sampler2D uMarkContactDist;
+				uniform float uMarkContactRange;
+				uniform float uMarkContactDensity;
+				uniform float uMarkContactReach;
 				uniform float uMarkStudio;
 				uniform float uMarkFloorRefl;
 				uniform float uMarkFalloff;
@@ -326,8 +335,14 @@ function patchStudio(material, look) {
 				`{
 					vec2 _muv = ( vMarkGlyph.xz - uMarkMin ) / ( uMarkMax - uMarkMin );
 					float _occ = pow( texture2D( uMarkMap, _muv ).r, uMarkContrast );
-					float _up = smoothstep( 0.0, uMarkReach, vMarkGlyph.y - uMarkFloor );
+					// Up the letter the floor's shade lets go fast, then slowly:
+					// an exponential approach (95 % of the way at the reach),
+					// not an S, which would start flat at the very foot.
+					float _h = max( vMarkGlyph.y - uMarkFloor, 0.0 );
+					float _up = 1.0 - exp( - 3.0 * _h / uMarkReach );
 					_occ = mix( _occ, mix( 1.0, _occ, uMarkTop ), _up );
+					// The contact core, as on the floor around it.
+					_occ *= 1.0 - uMarkContactDensity * exp( - _h / uMarkContactReach );
 					outgoingLight *= mix( 1.0, _occ, uMarkStudio );
 
 					vec3 _n = normalize( normal );
@@ -337,6 +352,9 @@ function patchStudio(material, look) {
 						float _t = ( vMarkGlyph.y - uMarkFloor ) / max( - _rg.y, 1e-4 );
 						vec2 _hit = ( vMarkGlyph.xz + _rg.xz * _t - uMarkMin ) / ( uMarkMax - uMarkMin );
 						float _lit = pow( texture2D( uMarkMap, _hit ).r, uMarkContrast );
+						// The floor it mirrors wears the core too: the dark line
+						// at the foot of the reflection.
+						_lit *= 1.0 - uMarkContactDensity * exp( - texture2D( uMarkContactDist, _hit ).r * uMarkContactRange / uMarkContactReach );
 						// Schlick, the base's 4 % and the coat's on top of it.
 						float _f = 0.04 + 0.96 * pow( 1.0 - saturate( dot( _n, geometryViewDir ) ), 5.0 );
 						_f = min( _f * ( 1.0 + material.clearcoat ), uMarkGrazing );

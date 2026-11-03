@@ -138,6 +138,19 @@ FLOOR_MAX = (8.0, 6.0)
 FLOOR_RES = 1024
 PAPER = 0.955  # #FAFAF8, linear
 
+# THE CONTACT CORE (Alexandre, 2026-11-03): the bake's occlusion is right in
+# its spread but soft at the very foot — a 90-degree corner only loses half
+# its sky, and the grain filter rounds what peak there is. The shaders add a
+# short, dense layer on top, exp(-d / reach), from the exact distance to the
+# nearest foot: on the floor, this map (glyph-alxmtnc-3d-v3.contact.png, the
+# floor rect, distance over CONTACT_RANGE); on the stair, the foot segments in
+# the json. Past CONTACT_RANGE the layer is gone, so 8 bits over it are a
+# step of 2 thousandths of a unit.
+CONTACT_RANGE = 0.5
+# Run with CONTACT_ONLY=1 to rewrite only those two, in seconds, without the
+# Cycles bakes.
+CONTACT_ONLY = __import__("os").environ.get("CONTACT_ONLY") == "1"
+
 
 # Set BAKE_DEBUG to a directory to keep the raw bakes as .npy.
 DEBUG = __import__("os").environ.get("BAKE_DEBUG")
@@ -280,6 +293,123 @@ def write_png(path, *channels):
                      + chunk(b"IEND", b""))
 
 
+def feet_mask(mesh, mark, bottom):
+    """The floor texels under the stair's feet and the word's, bottom-up rows."""
+    u = (np.arange(FLOOR_RES) + 0.5) / FLOOR_RES
+    tx = FLOOR_MIN[0] + u * (FLOOR_MAX[0] - FLOOR_MIN[0])
+    # Rows run bottom-up, and the bottom row is v = 1 — three's max z.
+    tz = FLOOR_MAX[1] - u * (FLOOR_MAX[1] - FLOOR_MIN[1])
+    X, Z = np.meshgrid(tx, tz)
+    feet = np.zeros((FLOOR_RES, FLOOR_RES), bool)
+    for poly in mesh.polygons:
+        if poly.normal.z > -0.9 or abs(poly.center.z - bottom) > 1e-4:
+            continue
+        xs = [mesh.vertices[i].co.x for i in poly.vertices]
+        zs = [-mesh.vertices[i].co.y for i in poly.vertices]
+        feet |= (X > min(xs)) & (X < max(xs)) & (Z > min(zs)) & (Z < max(zs))
+    # The word's feet, the same way: every triangle of its underside. The
+    # letters' bottoms are not all on one line in the SVG — the round ones dip
+    # a hair — so "on the floor" is within a fraction of a floor texel.
+    before = feet.sum()
+    for poly in mark.data.polygons:
+        vs = [mark.matrix_world @ mark.data.vertices[i].co for i in poly.vertices]
+        if any(abs(v.z - bottom) > 0.006 for v in vs) or len(vs) != 3:
+            continue
+        (ax, az), (bx, bz), (cx, cz) = [(v.x, -v.y) for v in vs]
+        d = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz)
+        if abs(d) < 1e-12:
+            continue
+        l1 = ((bz - cz) * (X - cx) + (cx - bx) * (Z - cz)) / d
+        l2 = ((cz - az) * (X - cx) + (ax - cx) * (Z - cz)) / d
+        feet |= (l1 > 0) & (l2 > 0) & (1 - l1 - l2 > 0)
+    print(f"floor: {before} texels under the stair's feet, {feet.sum() - before} "
+          "under the word's, filled from around them")
+    return feet
+
+
+def foot_distance(feet):
+    """
+    Exact Euclidean distance, model units, from each floor texel to the
+    nearest foot texel, out to CONTACT_RANGE: a row pass, then the columns.
+    Measured between texel centres, so half a texel comes off — the foot's
+    real outline runs along the edge of its outermost texels.
+    """
+    h, w = feet.shape
+    texel = (FLOOR_MAX[0] - FLOOR_MIN[0]) / FLOOR_RES
+    big = 1e9
+    row = np.full(feet.shape, big)
+    last = np.full(h, -big)
+    for x in range(w):
+        last = np.where(feet[:, x], x, last)
+        row[:, x] = x - last
+    last = np.full(h, big)
+    for x in range(w - 1, -1, -1):
+        last = np.where(feet[:, x], x, last)
+        row[:, x] = np.minimum(row[:, x], last - x)
+    g = np.minimum(row, big) ** 2
+    out = g.copy()
+    for dy in range(1, int(math.ceil(CONTACT_RANGE / texel)) + 2):
+        out = np.minimum(out, np.minimum(np.roll(g, dy, 0), np.roll(g, -dy, 0)) + dy * dy)
+    d = np.sqrt(out) * texel - 0.5 * texel
+    return np.clip(d, 0, CONTACT_RANGE)
+
+
+def foot_edges(glyph, bottom):
+    """
+    The stair's feet, as segments in glTF coordinates, each with the two faces
+    that darken toward it (axis codes, as for the convex edges): every inside
+    corner where an upright face stands on a tread, and every bottom edge of
+    an upright face, which stands on the floor (its code twice: the floor is
+    another mesh, and reads the map).
+    """
+    import bmesh
+
+    bm = bmesh.new()
+    bm.from_mesh(glyph.data)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-4)
+    bmesh.ops.dissolve_limit(bm, angle_limit=0.01, verts=bm.verts, edges=bm.edges)
+
+    def gltf(v):
+        return [round(v[0], 5), round(v[2], 5), round(-v[1], 5)]
+
+    def code(n):
+        n = gltf(n)
+        a = max(range(3), key=lambda k: abs(n[k]))
+        return (a + 1) * (1 if n[a] > 0 else -1)
+
+    feet = []
+    for e in bm.edges:
+        if len(e.link_faces) != 2 or e.calc_face_angle() < 0.5:
+            continue
+        f1, f2 = e.link_faces
+        upright = [f for f in (f1, f2) if abs(f.normal.z) < 0.1]
+        if len(upright) != 1:
+            continue
+        other = f2 if upright[0] is f1 else f1
+        a, b = (gltf(v.co) for v in e.verts)
+        if not e.is_convex and other.normal.z > 0.9:
+            feet.append([*a, *b, code(upright[0].normal), code(other.normal)])
+        elif (e.is_convex and other.normal.z < -0.9
+              and abs(other.calc_center_median().z - bottom) < 1e-4):
+            c = code(upright[0].normal)
+            feet.append([*a, *b, c, c])
+    bm.free()
+    print(f"feet: {len(feet)} foot segments")
+    return feet
+
+
+def write_contact(glyph, mesh, mark, bottom):
+    """The contact core's two inputs: the floor's distance map, the stair's feet."""
+    d = foot_distance(feet_mask(mesh, mark, bottom))
+    write_png(MODELS / f"{NAME}.contact.png", d / CONTACT_RANGE)
+    path = MODELS / f"{NAME}.studio.json"
+    meta = json.loads(path.read_text())
+    meta["contact"] = {"range": CONTACT_RANGE}
+    meta["feet"] = foot_edges(glyph, bottom)
+    path.write_text(json.dumps(meta, indent=1) + "\n")
+    print("wrote", f"{NAME}.contact.png, feet and contact in {NAME}.studio.json")
+
+
 def convex_edges(glyph, bottom):
     """
     The stair's convex edges, as segments in the glyph's glTF coordinates,
@@ -381,6 +511,9 @@ def main():
     assert abs(min(v.z for v in mb) - bottom) < 1e-3, "the mark does not stand on the floor"
     # Not in the stair's own light: the stair's atlas is the stair's.
     mark.hide_render = True
+    if CONTACT_ONLY:
+        write_contact(glyph, mesh, mark, bottom)
+        return
 
     # 1. The stair's light, and its normals to sort the texels by.
     light = float_image("light", ATLAS, ATLAS)
@@ -462,35 +595,7 @@ def main():
     # reads one texel of it at the foot, and at a grazing angle that texel
     # stair-steps into a jagged dark line. So the feet take the value of the
     # floor around them.
-    u = (np.arange(FLOOR_RES) + 0.5) / FLOOR_RES
-    tx = FLOOR_MIN[0] + u * (FLOOR_MAX[0] - FLOOR_MIN[0])
-    # Rows run bottom-up, and the bottom row is v = 1 — three's max z.
-    tz = FLOOR_MAX[1] - u * (FLOOR_MAX[1] - FLOOR_MIN[1])
-    X, Z = np.meshgrid(tx, tz)
-    feet = np.zeros_like(F, bool)
-    for poly in mesh.polygons:
-        if poly.normal.z > -0.9 or abs(poly.center.z - bottom) > 1e-4:
-            continue
-        xs = [mesh.vertices[i].co.x for i in poly.vertices]
-        zs = [-mesh.vertices[i].co.y for i in poly.vertices]
-        feet |= (X > min(xs)) & (X < max(xs)) & (Z > min(zs)) & (Z < max(zs))
-    # The word's feet, the same way: every triangle of its underside. The
-    # letters' bottoms are not all on one line in the SVG — the round ones dip
-    # a hair — so "on the floor" is within a fraction of a floor texel.
-    before = feet.sum()
-    for poly in mark.data.polygons:
-        vs = [mark.matrix_world @ mark.data.vertices[i].co for i in poly.vertices]
-        if any(abs(v.z - bottom) > 0.006 for v in vs) or len(vs) != 3:
-            continue
-        (ax, az), (bx, bz), (cx, cz) = [(v.x, -v.y) for v in vs]
-        d = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz)
-        if abs(d) < 1e-12:
-            continue
-        l1 = ((bz - cz) * (X - cx) + (cx - bx) * (Z - cz)) / d
-        l2 = ((cz - az) * (X - cx) + (ax - cx) * (Z - cz)) / d
-        feet |= (l1 > 0) & (l2 > 0) & (1 - l1 - l2 > 0)
-    print(f"floor: {before} texels under the stair's feet, {feet.sum() - before} "
-          "under the word's, filled from around them")
+    feet = feet_mask(mesh, mark, bottom)
     F = fill_holes(F, feet)
     tint_rg = fill_holes(tint_rg, feet)
     tint_b = fill_holes(tint_b, feet)
@@ -506,6 +611,7 @@ def main():
         "floor": {"min": FLOOR_MIN, "max": FLOOR_MAX, "y": bottom},
     }, indent=1) + "\n")
     print("wrote", f"{NAME}.studio.png, {NAME}.floor.png, {NAME}.studio.json")
+    write_contact(glyph, mesh, mark, bottom)
 
 
 main()

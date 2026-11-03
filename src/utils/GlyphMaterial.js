@@ -124,6 +124,13 @@ export function patchGlyphMaterial(
 	const edgeA = edges.map((e) => new THREE.Vector4(e[0], e[1], e[2], e[6]));
 	const edgeB = edges.map((e) => new THREE.Vector4(e[3], e[4], e[5], e[7]));
 	const threaded = edges.length > 0;
+	// The feet, the same way: the inside corners where an upright face stands
+	// on a tread and the bottom edges standing on the floor, each with the two
+	// faces that darken toward it (THE CONTACT CORE, below).
+	const feet = (studio?.contact && studio?.feet) ?? [];
+	const footA = feet.map((e) => new THREE.Vector4(e[0], e[1], e[2], e[6]));
+	const footB = feet.map((e) => new THREE.Vector4(e[3], e[4], e[5], e[7]));
+	const footed = feet.length > 0;
 	if (baked) {
 		Object.assign(uniforms, {
 			uStudioMap: { value: studio.map },
@@ -135,6 +142,14 @@ export function patchGlyphMaterial(
 			uEdgeA: { value: edgeA },
 			uEdgeB: { value: edgeB },
 		});
+		if (footed) {
+			Object.assign(uniforms, {
+				uFootA: { value: footA },
+				uFootB: { value: footB },
+				uContactDensity: { value: studio.contact.density },
+				uContactReach: { value: studio.contact.reach },
+			});
+		}
 	}
 
 	if (wells) {
@@ -227,6 +242,19 @@ export function patchGlyphMaterial(
 			uniform vec4 uEdgeA[ EDGE_COUNT ];
 			uniform vec4 uEdgeB[ EDGE_COUNT ];
 			vec3 edgeFace( float code ) {
+				float a = abs( code );
+				return sign( code ) * vec3( step( abs( a - 1.0 ), 0.5 ), step( abs( a - 2.0 ), 0.5 ), step( abs( a - 3.0 ), 0.5 ) );
+			}`
+					: ""
+			}
+			${
+				footed
+					? `#define FOOT_COUNT ${feet.length}
+			uniform vec4 uFootA[ FOOT_COUNT ];
+			uniform vec4 uFootB[ FOOT_COUNT ];
+			uniform float uContactDensity;
+			uniform float uContactReach;
+			vec3 footFace( float code ) {
 				float a = abs( code );
 				return sign( code ) * vec3( step( abs( a - 1.0 ), 0.5 ), step( abs( a - 2.0 ), 0.5 ), step( abs( a - 3.0 ), 0.5 ) );
 			}`
@@ -340,6 +368,27 @@ export function patchGlyphMaterial(
 					// lit face — 1 — exactly where it was.
 					vec2 _bake = pow( texture2D( uStudioMap, vStudioUv ).rg * uStudioRange, vec2( uStudioContrast ) );
 					float _d = mix( 1.0, _bake.r, uStudio );
+
+					// THE CONTACT CORE. The bake has the corner's spread; at
+					// the very foot of an upright face — on the floor, on the
+					// tread it stands on — a real one goes dense and falls off
+					// fast, then hands over to that spread: exp(-d / reach),
+					// from the exact distance to the nearest foot this face
+					// belongs to (the floor reads the same curve from its map).
+					#ifdef FOOT_COUNT
+					{
+						vec3 _fn = normalize( vGlyphObjectNormal );
+						float _fd = 1e3;
+						for ( int i = 0; i < FOOT_COUNT; i ++ ) {
+							if ( max( dot( footFace( uFootA[ i ].w ), _fn ), dot( footFace( uFootB[ i ].w ), _fn ) ) < 0.5 ) continue;
+							vec3 _a = uFootA[ i ].xyz;
+							vec3 _ab = uFootB[ i ].xyz - _a;
+							float _t = clamp( dot( vEdgeObject - _a, _ab ) / dot( _ab, _ab ), 0.0, 1.0 );
+							_fd = min( _fd, length( vEdgeObject - _a - _t * _ab ) );
+						}
+						_d *= mix( 1.0, 1.0 - uContactDensity * exp( - _fd / uContactReach ), uStudio );
+					}
+					#endif
 					reflectedLight.directDiffuse *= _d;
 					reflectedLight.indirectDiffuse *= _d;
 					float _s = mix( 1.0, min( _bake.g, 1.0 ), uStudio * uStudioSpecular );

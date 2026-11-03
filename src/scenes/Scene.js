@@ -162,7 +162,20 @@ const SHADING = {
 		// light on the convex edges; grain, the film grain's amplitude, as a
 		// share of the displayed value (half of it either way). All three
 		// ride the same ramp, so at rest there is none of them.
-		studio: { contrast: 1.8, specular: 0.5, bounce: 0.4, edge: 1, grain: 0.022 },
+		studio: {
+			contrast: 1.8,
+			specular: 0.5,
+			bounce: 0.4,
+			edge: 1,
+			grain: 0.022,
+			// THE CONTACT CORE (Alexandre, 2026-11-03: « ça commence très fort,
+			// ça tombe rapidement puis ça continue doucement »). The bake's
+			// occlusion has the spread and is soft at the foot; on top of it,
+			// on the floor, on the stair and on the AAXLO mark alike, a short
+			// dense layer 1 − density · exp(−d / reach), d the distance to the
+			// nearest foot, glyph units (a step is 1 tall, the word 0.45).
+			contact: { density: 0.6, reach: 0.06 },
+		},
 		glyph: {
 			bounce: BOUNCE,
 			knee: 0.9,
@@ -1147,6 +1160,8 @@ export default class Scene {
 				specular: this.shading.studio.specular,
 				edges: this.studioBake.edges,
 				edge: this.shading.studio.edge,
+				feet: this.studioBake.feet,
+				contact: this.shading.studio.contact,
 			},
 		});
 
@@ -1277,6 +1292,7 @@ export default class Scene {
 			studio: this.studio,
 			contrast: this.shading.studio.contrast,
 			bounce: this.shading.studio.bounce,
+			contact: this.shading.studio.contact,
 		});
 	}
 
@@ -2484,6 +2500,7 @@ export default class Scene {
 				studio: this.studio,
 				toGlyph: this.toGlyph,
 				contrast: this.shading.studio.contrast,
+				contact: this.shading.studio.contact,
 			},
 		);
 		// The word is part of what the travel frame has to hold.
