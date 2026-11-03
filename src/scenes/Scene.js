@@ -24,6 +24,7 @@ import {
 	TAU,
 } from "../utils/utils";
 import { AaxloMark } from "./AaxloMark";
+import { installContactShadows } from "../utils/contactShadow";
 import { StepEngravings, LABEL } from "./StepEngravings";
 
 /* --------------------------------------------------------------- constants */
@@ -862,6 +863,10 @@ export default class Scene {
 		if (!this.layouts) throw new Error(`unknown layout: ${layout}`);
 		this.shading = SHADING[shading];
 		if (!this.shading) throw new Error(`unknown shading: ${shading}`);
+		// The softbox's shadow, sharp at the contact and opening up with the
+		// gap (utils/contactShadow.js). Before anything compiles, and only on
+		// the studio's pages: index.html keeps the shadow it shipped with.
+		if (this.shading.studio) installContactShadows();
 
 		// v2 only: the tunnel leg of the loop, and the page fading by MEASURED
 		// visibility instead of by a hand-tuned scroll window. index.html is
@@ -1066,8 +1071,11 @@ export default class Scene {
 		// map's coarse texels draw at the menu's grazing eye. Pages without
 		// the bake (index.html, frozen) keep the shadow they shipped with.
 		const soft = Boolean(this.shading.studio);
-		this.key.shadow.radius = soft ? 10 : 5;
-		this.key.shadow.blurSamples = soft ? 24 : 16;
+		// With the studio the penumbra is computed per pixel from the gap
+		// (utils/contactShadow.js): the map's own blur is only its floor, a
+		// couple of texels, or the contact would never be sharp.
+		this.key.shadow.radius = soft ? 2 : 5;
+		this.key.shadow.blurSamples = soft ? 8 : 16;
 		this.key.shadow.bias = -0.0002;
 		this.key.shadow.normalBias = 0.04;
 		this.scene.add(this.key);

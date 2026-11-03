@@ -126,6 +126,62 @@ const STUDIO_LOOK = {
 	falloff: HEIGHT * 0.6,
 	// The grazing flanks went to white threads at full Schlick: capped.
 	grazing: 0.2,
+	// THE STAIR'S SHADOW, on the word as on the floor. Alexandre, 2026-11-03:
+	// the tops of the two A's stood in the stair's shadow and shone as if in
+	// full light. The key's shadow map did cut the key off them — but what
+	// greys a lacquered top is not the key, it is the ceiling it mirrors, and
+	// the environment knows nothing of the stair. In this studio the ceiling
+	// IS the softbox that casts that shadow: where the stair hides the key
+	// from a point, it hides the bright ceiling from it too. So the word's
+	// indirect light (the mirrored room, the sky, the floor in the lacquer)
+	// is dimmed by the key's own shadow term, read from the same map at the
+	// same texel. One shadow, one source, every surface: the floor and the
+	// word darken together and their penumbras coincide.
+	// How much: a MATTE floor in the shadow keeps the open sky and loses half
+	// its light (AAXLO shot, 252 -> 184). A MIRROR loses more, because what
+	// it mirrors is the very source that is hidden. 0.55 matched the floor's
+	// ratio and still read as lit; 0.75 puts the first A's top near its own
+	// faces, which is what a lacquer in shade looks like. 1 blacks it out.
+	shade: 0.75,
+};
+
+/**
+ * INSIDE THE O'S SLOTS. Alexandre, 2026-11-03, two screenshots: seen at an
+ * angle, the walls of the slots between the O's slices read GREY, not the
+ * dark orange a coral slot in shade would be. Every term that lights them
+ * looked at the room as if the wall were out in the open: the ceiling in the
+ * lacquer, the white floor traced in it, the sky, the key. A slot is 1.75
+ * SVG units wide and 7.4 deep; from half-way in, a wall sees a sliver of
+ * room at either end and, everywhere else, the coral wall facing it. What
+ * fills a slot is coral bounced off coral, so it is DARKER and MORE orange —
+ * and the white of the floor or the ceiling, added on top of a dim coral, is
+ * exactly what turns it grey.
+ *
+ * Done exactly, per pixel, because the slot is a known shape: straight walls
+ * at 45° in the SVG, both ends open along the extrusion. For a direction
+ * leaving the wall, the opposite wall is hit after `gap / (d·n)`; the ray
+ * gets out only if by then it has run past the front or the back face.
+ *   - reflections (room, coat, floor): kept where the mirrored ray gets out,
+ *     replaced by the facing wall where it does not;
+ *   - the key: the same test along the light, since the shadow map's texels
+ *     are coarser than the slot;
+ *   - the sky (diffuse): the view factor of the two openings from that depth,
+ *     the rest coral bounced once.
+ */
+const SLOT = {
+	// The O's slices are cut along (1, 1) in the SVG: walls face ±(1, −1).
+	normal: [Math.SQRT1_2, -Math.SQRT1_2, 0],
+	// Measured off the SVG's straight edges: gaps and slices alternate at
+	// 1.73 and 1.80 units.
+	gap: 1.75,
+	// The extrusion, SVG units: DEPTH in the geometry's own frame.
+	depth: (DEPTH / HEIGHT) * SVG_UNITS,
+	// How much of the light the facing wall sends back: coral's albedo times
+	// the dim light it receives itself. Tuned on the slot shot: dark orange.
+	bounce: 0.45,
+	// What the facing wall gives a mirror ray that hits it, as a share of
+	// this wall's own diffuse: a lacquer mirrors its neighbour, dimly.
+	mirror: 0.25,
 };
 
 function patchStudio(material, look) {
@@ -140,6 +196,16 @@ function patchStudio(material, look) {
 		uMarkFloorRefl: { value: STUDIO_LOOK.floor },
 		uMarkFalloff: { value: STUDIO_LOOK.falloff },
 		uMarkGrazing: { value: STUDIO_LOOK.grazing },
+		uMarkShade: { value: STUDIO_LOOK.shade },
+		uMarkSlot: { value: 0 },
+		uMarkSlotN: { value: new THREE.Vector3(...SLOT.normal) },
+		uMarkSlotGap: { value: SLOT.gap },
+		uMarkSlotDepth: { value: SLOT.depth },
+		uMarkSlotBounce: { value: SLOT.bounce },
+		uMarkSlotMirror: { value: SLOT.mirror },
+		// World to the geometry's own frame (SVG units), set per mesh before
+		// each draw: the slot test runs where the slot is a plain box.
+		uMarkToLocal: { value: new THREE.Matrix4() },
 		uMarkStudio: look.studio,
 		uMarkToGlyph: look.toGlyph,
 	};
@@ -150,12 +216,16 @@ function patchStudio(material, look) {
 				"#include <common>",
 				`#include <common>
 				uniform mat4 uMarkToGlyph;
-				varying vec3 vMarkGlyph;`,
+				varying vec3 vMarkGlyph;
+				varying vec3 vMarkLocal;
+				varying vec3 vMarkLocalN;`,
 			)
 			.replace(
 				"#include <begin_vertex>",
 				`#include <begin_vertex>
-				vMarkGlyph = ( uMarkToGlyph * modelMatrix * vec4( transformed, 1.0 ) ).xyz;`,
+				vMarkGlyph = ( uMarkToGlyph * modelMatrix * vec4( transformed, 1.0 ) ).xyz;
+				vMarkLocal = transformed;
+				vMarkLocalN = objectNormal;`,
 			);
 		shader.fragmentShader = shader.fragmentShader
 			.replace(
@@ -172,8 +242,84 @@ function patchStudio(material, look) {
 				uniform float uMarkFloorRefl;
 				uniform float uMarkFalloff;
 				uniform float uMarkGrazing;
+				uniform float uMarkShade;
+				uniform float uMarkSlot;
+				uniform vec3 uMarkSlotN;
+				uniform float uMarkSlotGap;
+				uniform float uMarkSlotDepth;
+				uniform float uMarkSlotBounce;
+				uniform float uMarkSlotMirror;
+				uniform mat4 uMarkToLocal;
 				uniform mat4 uMarkToGlyph;
-				varying vec3 vMarkGlyph;`,
+				varying vec3 vMarkGlyph;
+				varying vec3 vMarkLocal;
+				varying vec3 vMarkLocalN;
+				float markKeyLit = 1.0;
+				float markSlotOut = 1.0;
+
+				// A view-space direction into the geometry's frame.
+				vec3 markToLocal( vec3 v ) {
+					return normalize( mat3( uMarkToLocal ) * inverseTransformDirection( v, viewMatrix ) );
+				}
+
+				// 1 if a ray leaving the slot wall along d gets out of the
+				// slot before it meets the facing wall, 0 if not.
+				float markSlotEscape( vec3 d, vec3 n, float z ) {
+					float dn = dot( d, n );
+					if ( dn <= 1e-4 ) return 0.0;
+					float hz = z + d.z * uMarkSlotGap / dn;
+					float inside = smoothstep( -0.25, 0.25, hz ) * smoothstep( uMarkSlotDepth + 0.25, uMarkSlotDepth - 0.25, hz );
+					return 1.0 - inside;
+				}`,
+			)
+			.replace(
+				// After the lights, before the clearcoat is folded in: the
+				// key's shadow term, the one lights_fragment_begin applied to
+				// the key, laid over everything that does not come from it.
+				// The key is directional shadow 0: three puts shadow casters
+				// first, and the fill casts none.
+				"#include <lights_fragment_end>",
+				`#include <lights_fragment_end>
+				#if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 0
+				{
+					DirectionalLightShadow _ks = directionalLightShadows[ 0 ];
+					float _vis = receiveShadow ? getShadow( directionalShadowMap[ 0 ], _ks.shadowMapSize, _ks.shadowIntensity, _ks.shadowBias, _ks.shadowRadius, vDirectionalShadowCoord[ 0 ] ) : 1.0;
+					markKeyLit = mix( 1.0, _vis, uMarkShade * uMarkStudio );
+					reflectedLight.indirectDiffuse *= markKeyLit;
+					reflectedLight.indirectSpecular *= markKeyLit;
+					clearcoatSpecularIndirect *= markKeyLit;
+				}
+				#endif
+				if ( uMarkSlot > 0.5 ) {
+					vec3 _ln = normalize( vMarkLocalN );
+					// Only the slot walls: flat, square to the cut, in the
+					// disc's plane. The rim's curve faces the cut at two
+					// points only, and the band is narrower than a texel.
+					float _wall = smoothstep( 0.995, 0.999, abs( dot( _ln, uMarkSlotN ) ) ) * ( 1.0 - step( 0.05, abs( _ln.z ) ) );
+					if ( _wall > 0.0 ) {
+						float _z = vMarkLocal.z + 0.5 * uMarkSlotDepth;
+						float _g = uMarkSlotGap;
+						float _a = _z;
+						float _b = uMarkSlotDepth - _z;
+						// The two openings' view factor from this depth.
+						float _sky = 0.5 * ( 1.0 - _a / sqrt( _a * _a + _g * _g ) )
+							+ 0.5 * ( 1.0 - _b / sqrt( _b * _b + _g * _g ) );
+						vec3 _keyDir = markToLocal( directionalLights[ 0 ].direction );
+						float _key = markSlotEscape( _keyDir, _ln, _z );
+						vec3 _view = markToLocal( reflect( - geometryViewDir, normal ) );
+						markSlotOut = mix( 1.0, markSlotEscape( _view, _ln, _z ), _wall );
+
+						vec3 _diffuseIn = mix( vec3( 1.0 ), _sky + ( 1.0 - _sky ) * uMarkSlotBounce * diffuseColor.rgb, _wall );
+						reflectedLight.indirectDiffuse *= _diffuseIn;
+						reflectedLight.directDiffuse *= mix( 1.0, _key, _wall );
+						reflectedLight.directSpecular *= mix( 1.0, _key, _wall );
+						clearcoatSpecularDirect *= mix( 1.0, _key, _wall );
+						// The facing wall in the mirror: its own coral, dim.
+						vec3 _facing = ( reflectedLight.indirectDiffuse + reflectedLight.directDiffuse ) * uMarkSlotMirror;
+						reflectedLight.indirectSpecular = reflectedLight.indirectSpecular * markSlotOut + _facing * ( 1.0 - markSlotOut );
+						clearcoatSpecularIndirect *= markSlotOut;
+					}
+				}`,
 			)
 			.replace(
 				"#include <opaque_fragment>",
@@ -195,6 +341,8 @@ function patchStudio(material, look) {
 						float _f = 0.04 + 0.96 * pow( 1.0 - saturate( dot( _n, geometryViewDir ) ), 5.0 );
 						_f = min( _f * ( 1.0 + material.clearcoat ), uMarkGrazing );
 						_lit *= exp( - _t * length( _rg.xz ) / uMarkFalloff );
+					// The floor it mirrors lies in the same shadow.
+					_lit *= markKeyLit * markSlotOut;
 						// Off the floor plane's own horizon smoothly, and only
 						// in the studio.
 						_f *= smoothstep( 0.0, 0.08, - _rg.y ) * uMarkStudio;
@@ -245,12 +393,18 @@ export class AaxloMark {
 						emissive: new THREE.Color(fill),
 						emissiveIntensity: 0,
 					});
-			if (look?.bake) patchStudio(material, look);
+			const studioUniforms = look?.bake ? patchStudio(material, look) : null;
 			const mesh = new THREE.Mesh(geometry, material);
+			const glyphO = fill.toUpperCase() === "#FF8270";
+			if (studioUniforms) {
+				studioUniforms.uMarkSlot.value = glyphO ? 1 : 0;
+				mesh.onBeforeRender = () =>
+					studioUniforms.uMarkToLocal.value.copy(mesh.matrixWorld).invert();
+			}
 			mesh.castShadow = true;
 			mesh.receiveShadow = true;
 			inner.add(mesh);
-			return { mesh, material, glyphO: fill.toUpperCase() === "#FF8270" };
+			return { mesh, material, glyphO };
 		});
 
 		const box = new THREE.Box3();
