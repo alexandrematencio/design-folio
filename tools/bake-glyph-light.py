@@ -55,7 +55,7 @@ neighbour it shares that corner with.
 
     python3 tools/bake-glyph-light.py [--samples 128] [--quiet]
 
-Writes public/models/glyph-alxmtnc-3d-v2.light.json — two Uint8 arrays in
+Writes public/models/glyph-alxmtnc-3d-v3.light.json — two Uint8 arrays in
 vertex order, plus the vertex count, which the loader asserts against the .glb
 so a rebuilt model can never be silently paired with a stale bake.
 
@@ -71,8 +71,8 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-GLB = ROOT / "public" / "models" / "glyph-alxmtnc-3d-v2.glb"
-OUT = ROOT / "public" / "models" / "glyph-alxmtnc-3d-v2.light.json"
+GLB = ROOT / "public" / "models" / "glyph-alxmtnc-3d-v3.glb"
+OUT = ROOT / "public" / "models" / "glyph-alxmtnc-3d-v3.light.json"
 
 COMPONENT = {5120: ("b", 1), 5121: ("B", 1), 5122: ("h", 2),
              5123: ("H", 2), 5125: ("I", 4), 5126: ("f", 4)}
@@ -253,22 +253,51 @@ def main():
         if not args.quiet and index % 80 == 0:
             print(f"  vertex {index:4d}/{len(positions)}", flush=True)
 
-    # Pass two: the selector, per face, from the centroid.
-    wedges = []
+    # Pass two: the selector, per POLYGON. The .glb is split per polygon
+    # (flat shading), so triangles sharing a vertex index are one face of the
+    # model; since the bevel came off (tools/sharpen-glyph.py) each face is
+    # also subdivided, and judging each small triangle on its own would cut
+    # the wedge in two — the ones near the opening see past the overhang.
+    # The drawing's wedge is flat, so the verdict is the face's mean.
+    parent = list(range(len(positions)))
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for a, b, c in tris:
+        parent[find(b)] = find(a)
+        parent[find(c)] = find(a)
+
+    seen = {}
     for a, b, c in tris:
         n = normalize(tuple(sum(normals[i][k] for i in (a, b, c)) / 3.0
                             for k in range(3)))
         centre = tuple(sum(positions[i][k] for i in (a, b, c)) / 3.0
                        for k in range(3))
         sky, ground = look(tuple(centre[k] + n[k] * 1e-3 for k in range(3)), n)
+        acc = seen.setdefault(find(a), [0.0, 0.0, 0, [0.0, 0.0, 0.0], n, []])
+        acc[0] += sky
+        acc[1] += ground
+        acc[2] += 1
+        acc[3] = [acc[3][k] + centre[k] for k in range(3)]
+        acc[5].append((a, b, c))
+
+    wedges = []
+    for sky_sum, ground_sum, count, centre_sum, n, members in seen.values():
+        sky, ground = sky_sum / count, ground_sum / count
+        centre = tuple(v / count for v in centre_sum)
         # Sealed off from the room AND open to the floor. Both, because the
         # faces that are merely enclosed — the interior treads, invisible from
         # every pose — see no floor either and must not be veiled.
         well = smoothstep(SEALED[0], SEALED[1], sky) * \
             smoothstep(LIT_FROM_BELOW[0], LIT_FROM_BELOW[1], ground)
         value = round(255 * well)
-        for i in (a, b, c):
-            well_bytes[i] = max(well_bytes[i], value)
+        for tri in members:
+            for i in tri:
+                well_bytes[i] = max(well_bytes[i], value)
         if well > 0.5:
             wedges.append((centre, n, sky, ground, well))
 
@@ -285,7 +314,7 @@ def main():
     if not args.quiet:
         print(f"\nbaked {len(positions)} vertices in {time.time() - started:.0f} s")
         print(f"wrote {OUT.relative_to(ROOT)}")
-        print(f"\n{len(wedges)} of {len(tris)} faces are in the well:")
+        print(f"\n{len(wedges)} of {len(seen)} faces are in the well:")
         shown = set()
         for centre, n, sky, ground, well in wedges:
             key = tuple(round(v * 2) for v in centre) + tuple(round(v) for v in n)

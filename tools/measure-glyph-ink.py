@@ -30,7 +30,7 @@ import struct
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-GLB = ROOT / "public" / "models" / "glyph-alxmtnc-3d-v2.glb"
+GLB = ROOT / "public" / "models" / "glyph-alxmtnc-3d-v3.glb"
 SVG = ROOT / "public" / "glyph-alxmtnc.svg"
 
 # The canonical view: orthographic, on the (1, 1, 1) axis, default up.

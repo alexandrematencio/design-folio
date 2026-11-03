@@ -50,6 +50,25 @@ import * as THREE from "three";
  * (aWell — the wedge and the rest of the pocket) may show the floor's mirror
  * image. The MEASUREMENT picks the faces; the LIGHT is the room's own.
  *
+ * THE STUDIO (one-material only, opt-in). Everything above is the perfect
+ * light, and at rest it has to be: the logo is flat. The moment the camera
+ * moves it is also what gives the 3D away — every face one value, nothing
+ * darkening into a corner, the riser and the side face on the same blue.
+ * `studio` is a Cycles bake of a photographer's studio — a softbox at a real
+ * distance, swung to one side (tools/bake-glyph-studio.py) — sampled in the
+ * lightmap UVs, and uStudio fades it in with the travel: the stair leaves the
+ * perfect light for a real studio as the visitor leaves the rest pose. Red is
+ * the diffuse, the studio over the rig, taken whole: the faces part, the
+ * corners close in. Green is occlusion alone, and the reflections take only
+ * `specular` of it — a mirror sees the room, not the lamp, and a corner dims
+ * a reflection less than it dims a lamp. Then the thread of light along each
+ * convex edge (studio.edges, from the same bake): the tenth-of-a-millimetre
+ * bevel every real edge has, measured exactly per pixel against the edge's
+ * segment, box-filtered over the pixel so it thins to a fade rather than
+ * breaking up, and reflecting the room in the direction that bevel faces —
+ * white where it turns to the softbox, nothing where it turns to the dark.
+ * All of it on uStudio: at rest there is no shade and no thread.
+ *
  * The tread rule uses the OBJECT-space normal, not the world one. "Horizontal"
  * is a property of the solid — which faces are treads — and must not change if
  * the glyph is ever turned.
@@ -83,6 +102,9 @@ export function patchGlyphMaterial(
 		// film ends it — a roll into white — rather than as a cut-out. 1
 		// disables it (pure clip).
 		knee = 1,
+		// { map, range, amount: { value }, contrast, specular, edges, edge }
+		// — see THE STUDIO.
+		studio = null,
 	},
 ) {
 	const wells = bounce !== null;
@@ -94,6 +116,26 @@ export function patchGlyphMaterial(
 	};
 
 	uniforms.uKnee = { value: knee };
+
+	const baked = studio !== null;
+	// Each edge as two vec4: its ends, and in w the two faces it joins, as
+	// axis codes (+-1 +-2 +-3 for +-x +-y +-z).
+	const edges = studio?.edges ?? [];
+	const edgeA = edges.map((e) => new THREE.Vector4(e[0], e[1], e[2], e[6]));
+	const edgeB = edges.map((e) => new THREE.Vector4(e[3], e[4], e[5], e[7]));
+	const threaded = edges.length > 0;
+	if (baked) {
+		Object.assign(uniforms, {
+			uStudioMap: { value: studio.map },
+			uStudioRange: { value: studio.range },
+			uStudio: studio.amount,
+			uStudioSpecular: { value: studio.specular ?? 0.5 },
+			uStudioContrast: { value: studio.contrast ?? 1 },
+			uStudioEdge: { value: studio.edge ?? 1 },
+			uEdgeA: { value: edgeA },
+			uEdgeB: { value: edgeB },
+		});
+	}
 
 	if (wells) {
 		Object.assign(uniforms, {
@@ -112,6 +154,16 @@ export function patchGlyphMaterial(
 				`#include <common>
 				varying vec3 vGlyphObjectNormal;
 				${
+					baked
+						? `attribute vec2 aStudioUv;
+				varying vec2 vStudioUv;
+				varying vec3 vEdgeObject;
+				varying vec3 vEdgeX;
+				varying vec3 vEdgeY;
+				varying vec3 vEdgeZ;`
+						: ""
+				}
+				${
 					wells
 						? `attribute float aSkyVis;
 				attribute float aGroundVis;
@@ -127,6 +179,17 @@ export function patchGlyphMaterial(
 				"#include <begin_vertex>",
 				`#include <begin_vertex>
 				vGlyphObjectNormal = normal;
+				${
+					baked
+						? `vStudioUv = aStudioUv;
+				// The edges are in object space; the bevel normal is built
+				// there and taken to view space through the object's axes.
+				vEdgeObject = position;
+				vEdgeX = normalMatrix * vec3( 1.0, 0.0, 0.0 );
+				vEdgeY = normalMatrix * vec3( 0.0, 1.0, 0.0 );
+				vEdgeZ = normalMatrix * vec3( 0.0, 0.0, 1.0 );`
+						: ""
+				}
 				${
 					wells
 						? `vSkyVis = aSkyVis;
@@ -145,6 +208,32 @@ export function patchGlyphMaterial(
 			uniform vec3 uFlatPaper;
 			uniform vec3 uFlatCobalt;
 			varying vec3 vGlyphObjectNormal;
+			${
+				baked
+					? `uniform sampler2D uStudioMap;
+			uniform float uStudioRange;
+			uniform float uStudio;
+			uniform float uStudioSpecular;
+			uniform float uStudioContrast;
+			uniform float uStudioEdge;
+			varying vec2 vStudioUv;
+			varying vec3 vEdgeObject;
+			varying vec3 vEdgeX;
+			varying vec3 vEdgeY;
+			varying vec3 vEdgeZ;
+			${
+				threaded
+					? `#define EDGE_COUNT ${edges.length}
+			uniform vec4 uEdgeA[ EDGE_COUNT ];
+			uniform vec4 uEdgeB[ EDGE_COUNT ];
+			vec3 edgeFace( float code ) {
+				float a = abs( code );
+				return sign( code ) * vec3( step( abs( a - 1.0 ), 0.5 ), step( abs( a - 2.0 ), 0.5 ), step( abs( a - 3.0 ), 0.5 ) );
+			}`
+					: ""
+			}`
+					: ""
+			}
 			// Per channel: identity up to the knee, then an exponential
 			// shoulder that approaches 1 and never crosses it. Per channel
 			// ON PURPOSE — a hue-preserving curve would keep a blown tread
@@ -240,6 +329,62 @@ export function patchGlyphMaterial(
 			);
 		}
 
+		if (baked) {
+			// After every light is in and before the layers are summed: the
+			// one point where diffuse, reflection and lacquer are still apart.
+			shader.fragmentShader = shader.fragmentShader.replace(
+				"#include <aomap_fragment>",
+				`#include <aomap_fragment>
+				{
+					// A power, not a gain: it deepens the shade and leaves the
+					// lit face — 1 — exactly where it was.
+					vec2 _bake = pow( texture2D( uStudioMap, vStudioUv ).rg * uStudioRange, vec2( uStudioContrast ) );
+					float _d = mix( 1.0, _bake.r, uStudio );
+					reflectedLight.directDiffuse *= _d;
+					reflectedLight.indirectDiffuse *= _d;
+					float _s = mix( 1.0, min( _bake.g, 1.0 ), uStudio * uStudioSpecular );
+					reflectedLight.directSpecular *= _s;
+					reflectedLight.indirectSpecular *= _s;
+					#ifdef USE_CLEARCOAT
+						clearcoatSpecularDirect *= _s;
+						clearcoatSpecularIndirect *= _s;
+					#endif
+
+					// THE THREAD. The nearest convex edge of this face —
+					// one the face itself runs along: its bevel leans toward
+					// this face's normal — and the exact distance to it.
+					#if defined( EDGE_COUNT ) && defined( USE_ENVMAP )
+					if ( uStudio > 0.0 ) {
+						vec3 _faceN = normalize( vGlyphObjectNormal );
+						float _ed = 1e3;
+						vec3 _bevel = _faceN;
+						for ( int i = 0; i < EDGE_COUNT; i ++ ) {
+							vec3 _bv = normalize( edgeFace( uEdgeA[ i ].w ) + edgeFace( uEdgeB[ i ].w ) );
+							if ( dot( _bv, _faceN ) < 0.5 ) continue;
+							vec3 _a = uEdgeA[ i ].xyz;
+							vec3 _ab = uEdgeB[ i ].xyz - _a;
+							float _t = clamp( dot( vEdgeObject - _a, _ab ) / dot( _ab, _ab ), 0.0, 1.0 );
+							float _d = length( vEdgeObject - _a - _t * _ab );
+							if ( _d < _ed ) { _ed = _d; _bevel = _bv; }
+						}
+						// A strip WIDTH wide, box-filtered over the pixel:
+						// under a pixel it fades instead of breaking up.
+						const float WIDTH = 0.006;
+						float _px = max( fwidth( _ed ), 1e-5 );
+						float _line = clamp( ( WIDTH + 0.5 * _px - _ed ) / _px, 0.0, 1.0 ) * min( 1.0, WIDTH / _px );
+						if ( _line > 0.0 ) {
+							vec3 _bn = normalize( _bevel.x * vEdgeX + _bevel.y * vEdgeY + _bevel.z * vEdgeZ );
+							float _fresnel = 0.04 + 0.96 * pow( 1.0 - saturate( dot( _bn, geometryViewDir ) ), 5.0 );
+							reflectedLight.indirectSpecular += getIBLRadiance( geometryViewDir, _bn, 0.12 )
+								* _fresnel * _line * uStudioEdge * uStudio;
+						}
+					}
+					#endif
+				}
+				`,
+			);
+		}
+
 		shader.fragmentShader = shader.fragmentShader.replace(
 			"#include <opaque_fragment>",
 			`#include <opaque_fragment>
@@ -261,7 +406,7 @@ export function patchGlyphMaterial(
 	};
 
 	material.customProgramCacheKey = () =>
-		wells ? "glyph-one-material" : "glyph-two-tone";
+		(wells ? "glyph-one-material" : "glyph-two-tone") + (baked ? "-studio" : "");
 	material.needsUpdate = true;
 
 	return uniforms;
