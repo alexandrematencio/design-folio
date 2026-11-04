@@ -4,6 +4,7 @@ import { iconSvg } from "./utils/icon";
 import { attachPageLinks } from "./utils/pageLinks";
 import { mountStatic } from "./static";
 import { bootScene } from "./utils/bootScene";
+import { mountSiteMenu } from "./utils/siteMenu";
 
 // style.css is linked from v2.html's head, not imported here: the DOM page
 // is on screen from the first paint and has to be styled by then.
@@ -97,6 +98,8 @@ const readReturn = () => {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
+	// The site menu lives outside the scene: the static page gets it too.
+	mountSiteMenu();
 	// No WebGL: the static page (src/static.js), and none of what follows —
 	// every line below drives the scene.
 	const three = bootScene(() =>
@@ -357,7 +360,7 @@ document.addEventListener("DOMContentLoaded", () => {
 	window.addEventListener("click", (event) => {
 		if (!galleryLive()) return;
 		// The About link sits over the corridor: its click is its own.
-		if (event.target.closest?.("#about-link")) return;
+		if (event.target.closest?.("#about-link, #menu-toggle, #site-menu")) return;
 		const at = toNdc(event);
 		if (!three.galleryView.pick(at.x, at.y)) return;
 

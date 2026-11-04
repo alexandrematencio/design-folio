@@ -33,6 +33,18 @@
 				} catch (e) {}
 				if (ok) document.documentElement.classList.add("is-3d");
 			})();
+			// "Menu" enters by running out from under About (utils/siteMenu.js):
+			// it must not be painted at its place first. The class comes off
+			// when the run starts, or after 3 s whatever happens — a script
+			// that failed must not leave the page without its menu.
+			(function () {
+				var root = document.documentElement;
+				if (!matchMedia("(prefers-reduced-motion: no-preference)").matches) return;
+				root.classList.add("menu-enter");
+				setTimeout(function () {
+					root.classList.remove("menu-enter");
+				}, 3000);
+			})();
 		</script>
 
 		<!--
@@ -208,6 +220,53 @@
 			veil, which covers it on the way out.
 		-->
 		<a id="about-link" href="https://amatencio.com/about/">About</a>
+
+		<!--
+			The site menu, top left (Alexandre, 2026-11-04). On load, "Menu"
+			runs out from under About to its place, stretching on the way and
+			squashing on landing (utils/siteMenu.js). Opened, its items come
+			as plain TEXT, no panel (Alexandre, same day): on hover the
+			items drop one after the other from under "Menu" and squash as they
+			land; a click only takes a final choice. Journal's two doors, Blog
+			and the Concept Map, are always shown under it, a step in. Outside the projected page, like
+			About: it stays put whatever the scene does.
+		-->
+		<button
+			id="menu-toggle"
+			type="button"
+			aria-expanded="false"
+			aria-controls="site-menu"
+			aria-haspopup="true"
+		>
+			<svg class="menu-toggle__icon" viewBox="0 0 16 12" aria-hidden="true">
+				<path d="M0 1h16M0 6h16M0 11h16" />
+			</svg>
+			Menu
+		</button>
+		<nav id="site-menu" aria-label="Site" hidden>
+			<ul class="site-menu__list">
+				<li>
+					<a class="site-menu__row" href="https://blog.amatencio.com/"><span>Journal</span></a>
+					<ul class="site-menu__list site-menu__list--sub">
+						<li><a class="site-menu__row" href="https://blog.amatencio.com/"><span>Blog</span></a></li>
+						<li>
+							<a class="site-menu__row" href="https://blog.amatencio.com/concept-map/"><span>Concept map</span></a>
+						</li>
+					</ul>
+				</li>
+				<li><a class="site-menu__row" href="https://photo.amatencio.com/"><span>Photography</span></a></li>
+				<li>
+					<span class="site-menu__row site-menu__row--soon" aria-disabled="true"
+						><span>Design <small>(soon)</small></span></span
+					>
+				</li>
+				<li>
+					<a class="site-menu__row" href="https://www.aaxlo.com/" target="_blank" rel="noopener"
+						><span>AAXLO</span><span class="sr-only"> (opens in a new tab)</span></a
+					>
+				</li>
+			</ul>
+		</nav>
 
 
 		<!--
