@@ -78,7 +78,7 @@ export async function loadStudioBake(geometry, base) {
 	// asks for channel 1, and none does.
 	geometry.setAttribute("aStudioUv", uv1);
 
-	const [meta, studio, floor] = await Promise.all([
+	const [meta, studio, floor, contact] = await Promise.all([
 		fetch(`${base}.studio.json`).then((r) => {
 			if (!r.ok) throw new Error(`studio bake not found: ${base}.studio.json`);
 			return r.json();
@@ -88,8 +88,11 @@ export async function loadStudioBake(geometry, base) {
 		// — and without mipmaps it aliases there into a comb along the foot.
 		// It is one image, no islands to bleed across: it can have them.
 		loadData(`${base}.floor.png`, { mipmaps: true }),
+		// The floor's distance to the nearest foot, over meta.contact.range:
+		// the contact core's input. Same rect, same grazing view.
+		loadData(`${base}.contact.png`, { mipmaps: true }),
 	]);
-	return { ...meta, studioMap: studio, floorMap: floor };
+	return { ...meta, studioMap: studio, floorMap: floor, contactMap: contact };
 }
 
 async function loadData(url, { mipmaps = false } = {}) {
@@ -113,7 +116,7 @@ async function loadData(url, { mipmaps = false } = {}) {
  */
 export function patchFloorContact(
 	material,
-	{ bake, toGlyph, studio, contrast = 1, bounce = 0 },
+	{ bake, toGlyph, studio, contrast = 1, bounce = 0, contact },
 ) {
 	const uniforms = {
 		uContactMap: { value: bake.floorMap },
@@ -124,6 +127,11 @@ export function patchFloorContact(
 		uStudio: studio,
 		uContactContrast: { value: contrast },
 		uContactBounce: { value: bounce },
+		// The contact core (Scene.js, SHADING.studio.contact): 0 density is none.
+		uContactDist: { value: bake.contactMap },
+		uContactRange: { value: bake.contact?.range ?? 1 },
+		uContactDensity: { value: contact?.density ?? 0 },
+		uContactReach: { value: contact?.reach ?? 1 },
 	};
 	const previous = material.onBeforeCompile;
 	material.onBeforeCompile = (shader, renderer) => {
@@ -152,6 +160,10 @@ export function patchFloorContact(
 				uniform float uStudio;
 				uniform float uContactContrast;
 				uniform float uContactBounce;
+				uniform sampler2D uContactDist;
+				uniform float uContactRange;
+				uniform float uContactDensity;
+				uniform float uContactReach;
 				varying vec3 vContactGlyph;`,
 			)
 			.replace(
@@ -164,6 +176,10 @@ export function patchFloorContact(
 					_in *= 1.0 - smoothstep( 0.02, 0.2, vContactGlyph.y - uContactY );
 					vec3 _ct = texture2D( uContactMap, _cuv ).rgb;
 					float _c = mix( 1.0, pow( _ct.r, uContactContrast ), _in * uStudio );
+					// The core: dense at the foot, gone within a few reaches,
+					// on top of the bake's spread.
+					float _cd = texture2D( uContactDist, _cuv ).r * uContactRange;
+					_c *= mix( 1.0, 1.0 - uContactDensity * exp( - _cd / uContactReach ), _in * uStudio );
 					// The stair's own colour on the matte floor around it: what
 					// the cobalt risers send down, blurred by the bake into a
 					// faint blue haze rather than a reflection.
